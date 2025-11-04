@@ -1,6 +1,7 @@
 import collections
 import heapq  # I/O 대기 큐(우선순위 큐)를 위해 import
 from process import Process, parse_input_file
+from sync import get_resource
 
 class SimulatorRR: # 👈 클래스 이름 변경
     """
@@ -24,16 +25,17 @@ class SimulatorRR: # 👈 클래스 이름 변경
         self.time_quantum = time_quantum # 타임 슬라이스 (기본값 4)
         self.current_time_slice = 0 # 현재 프로세스가 사용한 시간
 
+   # simulator_rr.py의 run() 메소드 (덮어쓸 내용)
+
     def run(self):
         """
-        시뮬레이션 메인 루프 (RR 버전)
+        시뮬레이션 메인 루프 (RR + 동기화 기능 추가됨)
         """
-        print(f"\n--- RR (Quantum={self.time_quantum}) 시뮬레이션 시작 ---") # 👈 이름 변경
+        print(f"\n--- RR (Quantum={self.time_quantum}) 시뮬레이션 시작 ---")
 
-        # 모든 프로세스가 도착하고, Ready/Waiting 큐가 비고, 실행 중인 프로세스가 없을 때까지
         while self.processes_to_arrive or self.ready_queue or self.waiting_queue or self.running_process:
             
-            # --- 1. 신규 프로세스 도착 처리 --- (FCFS와 동일)
+            # --- 1. 신규 프로세스 도착 처리 ---
             while self.processes_to_arrive and self.processes_to_arrive[0][0] <= self.current_time:
                 arrival, pid, proc = heapq.heappop(self.processes_to_arrive)
                 proc.state = Process.READY
@@ -41,7 +43,7 @@ class SimulatorRR: # 👈 클래스 이름 변경
                 self.ready_queue.append(proc) 
                 print(f"[Time {self.current_time:3d}] 프로세스 {pid} 도착 (Ready 큐 진입)")
 
-            # --- 2. I/O 완료 처리 (I/O 인터럽트) --- (FCFS와 동일)
+            # --- 2. I/O 완료 처리 ---
             while self.waiting_queue and self.waiting_queue[0][0] <= self.current_time:
                 io_finish_time, pid, proc = heapq.heappop(self.waiting_queue)
                 proc.state = Process.READY
@@ -49,87 +51,123 @@ class SimulatorRR: # 👈 클래스 이름 변경
                 self.ready_queue.append(proc) 
                 print(f"[Time {self.current_time:3d}] 프로세스 {pid} I/O 완료 (Ready 큐 진입)")
 
-            # --- 3. CPU 작업 처리 (Dispatcher 및 실행) ---
-            
-            # 3-1. 현재 실행 중인 프로세스가 없다면 (CPU가 비었다면)
+            # --- 3. CPU 작업 처리 (Dispatcher) ---
             if not self.running_process:
                 if self.ready_queue:
-                    # (FCFS와 동일한 로직)
                     self.running_process = self.ready_queue.popleft() 
                     self.running_process.state = Process.RUNNING
                     
                     wait = self.current_time - self.running_process.last_ready_time
                     self.running_process.wait_time += wait
                     
-                    self.gantt_chart.append((self.running_process.pid, self.current_time))
-                    print(f"[Time {self.current_time:3d}] 프로세스 {self.running_process.pid} 실행 시작 (대기: {wait}ms, 총 대기: {self.running_process.wait_time}ms)")
+                    self.current_time_slice = 0
+                    
+                    print(f"[Time {self.current_time:3d}] 프로세스 {self.running_process.pid} 선택됨 (대기: {wait}ms, 총 대기: {self.running_process.wait_time}ms)")
                 
                 else:
                     pass 
 
-            # 3-2. 현재 실행 중인 프로세스가 있다면 (💥 FCFS와 로직이 달라지는 부분)
+            # --- 3-2. 실행 로직 ---
             if self.running_process:
                 proc = self.running_process
-                
-                # 3-2-a. CPU 버스트 1 감소 / 타임 슬라이스 1 소모
-                proc.remaining_cpu_time -= 1
-                self.current_time_slice += 1 # 👈 [RR] 타임 슬라이스 사용
+                current_burst = proc.get_current_burst()
 
-                # 3-2-b. CPU 버스트가 끝났는지 검사
-                if proc.remaining_cpu_time == 0:
-                    print(f"[Time {self.current_time + 1:3d}] 프로세스 {proc.pid} CPU 버스트 완료")
+                # 3-2-a. TERMINATED
+                if not current_burst:
+                    proc.state = Process.TERMINATED
+                    proc.completion_time = self.current_time
+                    proc.turnaround_time = proc.completion_time - proc.arrival_time
+                    self.completed_processes.append(proc)
+                    print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid} 종료")
+                    self.running_process = None
+
+                # 3-2-b. 'CPU'
+                elif current_burst[0] == 'CPU':
+                    if (not self.gantt_chart or 
+                        self.gantt_chart[-1][0] != proc.pid or 
+                        len(self.gantt_chart[-1]) == 3):
+                        
+                        self.gantt_chart.append((proc.pid, self.current_time))
+                        print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid} CPU 작업 시작 (남은 시간: {proc.remaining_cpu_time}ms)")
+
+                    proc.remaining_cpu_time -= 1
+                    self.current_time_slice += 1 # 타임 슬라이스 사용
+
+                    # (1) CPU 버스트가 끝났는지 검사
+                    if proc.remaining_cpu_time == 0:
+                        print(f"[Time {self.current_time + 1:3d}] 프로세스 {proc.pid} CPU 버스트 완료")
+                        
+                        start_time = self.gantt_chart[-1][1]
+                        self.gantt_chart[-1] = (proc.pid, start_time, self.current_time + 1)
+                        self.last_cpu_busy_time = self.current_time + 1
+                        
+                        proc.advance_to_next_burst()
                     
-                    # (간트 차트 기록, I/O 처리, 종료 처리는 FCFS와 완벽히 동일)
-                    start_time = self.gantt_chart[-1][1]
-                    self.gantt_chart[-1] = (proc.pid, start_time, self.current_time + 1)
-                    self.last_cpu_busy_time = self.current_time + 1
-                    proc.current_burst_index += 1
+                    # (2) CPU 버스트가 남았는데, 타임 슬라이스를 다 썼는지 검사
+                    elif self.current_time_slice == self.time_quantum:
+                        print(f"[Time {self.current_time + 1:3d}] 프로세스 {proc.pid} 타임 슬라이스 만료")
 
-                    if proc.current_burst_index < len(proc.burst_pattern):
-                        proc.state = Process.WAITING
-                        io_duration = proc.burst_pattern[proc.current_burst_index]
-                        io_finish_time = self.current_time + 1 + io_duration
-                        heapq.heappush(self.waiting_queue, (io_finish_time, proc.pid, proc))
-                        print(f"[Time {self.current_time + 1:3d}] 프로세스 {proc.pid} I/O 시작 (대기 {io_duration}ms)")
-                        proc.current_burst_index += 1
-                        if proc.current_burst_index < len(proc.burst_pattern):
-                            proc.remaining_cpu_time = proc.burst_pattern[proc.current_burst_index]
+                        start_time = self.gantt_chart[-1][1]
+                        self.gantt_chart[-1] = (proc.pid, start_time, self.current_time + 1)
+                        self.last_cpu_busy_time = self.current_time + 1
+                        
+                        proc.state = Process.READY
+                        proc.last_ready_time = self.current_time + 1 
+                        self.ready_queue.append(proc)
+                        
+                        self.running_process = None # CPU 반납
+
+                # 3-2-c. 'IO'
+                elif current_burst[0] == 'IO':
+                    io_duration = current_burst[1]
+                    proc.state = Process.WAITING
+                    io_finish_time = self.current_time + io_duration # (버그 수정)
+                    
+                    heapq.heappush(self.waiting_queue, (io_finish_time, proc.pid, proc))
+                    print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid} I/O 시작 (대기 {io_duration}ms)")
+
+                    proc.advance_to_next_burst()
+                    self.running_process = None # CPU 반납
+
+                # 3-2-d. 'LOCK'
+                elif current_burst[0] == 'LOCK':
+                    resource_name = current_burst[1]
+                    resource = get_resource(resource_name)
+                    
+                    if not resource:
+                        print(f"!!! [Time {self.current_time:3d}] 오류: P{proc.pid}가 존재하지 않는 자원 '{resource_name}'을(를) 요청했습니다.")
+                        proc.advance_to_next_burst()
                     else:
-                        proc.state = Process.TERMINATED
-                        proc.completion_time = self.current_time + 1
-                        proc.turnaround_time = proc.completion_time - proc.arrival_time
-                        self.completed_processes.append(proc)
-                        print(f"[Time {self.current_time + 1:3d}] 프로세스 {proc.pid} 종료")
+                        print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid}이(가) '{resource_name}' Lock 시도...")
+                        if resource.lock(proc, self.current_time):
+                            print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid}이(가) '{resource_name}' Lock 획득")
+                            proc.advance_to_next_burst()
+                        else:
+                            print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid}이(가) '{resource_name}' Lock 실패. (자원 대기)")
+                            proc.state = Process.WAITING
+                            self.running_process = None # CPU 반납
 
-                    # 작업이 끝났으므로 CPU 비우기
-                    self.running_process = None
-                    self.current_time_slice = 0 # 👈 [RR] 타임 슬라이스 리셋
-                
-                # --- 💡 [RR] 여기가 2번 수정사항의 핵심입니다 ---
-                # 3-2-c. CPU 버스트가 아직 남았는데, 타임 슬라이스를 다 썼다면
-                elif self.current_time_slice == self.time_quantum:
-                    print(f"[Time {self.current_time + 1:3d}] 프로세스 {proc.pid} 타임 슬라이스 만료")
-
-                    # 간트 차트 기록 (중단)
-                    start_time = self.gantt_chart[-1][1]
-                    self.gantt_chart[-1] = (proc.pid, start_time, self.current_time + 1)
-                    self.last_cpu_busy_time = self.current_time + 1
+                # 3-2-e. 'UNLOCK'
+                elif current_burst[0] == 'UNLOCK':
+                    resource_name = current_burst[1]
+                    resource = get_resource(resource_name)
                     
-                    # Ready 큐의 맨 뒤로 보냄 (문맥 전환)
-                    proc.state = Process.READY
-                    # 💡주의: +1을 하여 다음 시간(Time unit)에 Ready 큐에 들어가는 것으로 처리
-                    proc.last_ready_time = self.current_time + 1 
-                    self.ready_queue.append(proc)
-                    
-                    # CPU 비우기
-                    self.running_process = None
-                    self.current_time_slice = 0 # 👈 [RR] 타임 슬라이스 리셋
-                
-                # (3-2-d. 버스트도 남았고, 타임 슬라이스도 남음 -> 다음 1ms 계속 실행)
-                
-            # --- 4. 통계 업데이트 ---
-            # (버그 수정된 상태 유지 - FCFS와 동일)
+                    if not resource:
+                        print(f"!!! [Time {self.current_time:3d}] 오류: P{proc.pid}가 존재하지 않는 자원 '{resource_name}'을(를) Unlock하려 합니다.")
+                        proc.advance_to_next_burst()
+                    else:
+                        print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid}이(가) '{resource_name}' Unlock 시도...")
+                        
+                        woken_process = resource.unlock(proc, self.current_time)
+                        
+                        if woken_process:
+                            woken_process.state = Process.READY
+                            woken_process.last_ready_time = self.current_time
+                            self.ready_queue.append(woken_process)
+                            print(f"[Time {self.current_time:3d}] 프로세스 {woken_process.pid}이(가) '{resource_name}' 획득 (Ready 큐 진입)")
 
+                        proc.advance_to_next_burst()
+            
             # --- 5. 시간 증가 ---
             self.current_time += 1
         
@@ -138,6 +176,9 @@ class SimulatorRR: # 👈 클래스 이름 변경
         
         total_cpu_busy_time = 0
         idle_time_start = 0
+        
+        self.gantt_chart = [entry for entry in self.gantt_chart if len(entry) == 3] 
+
         for pid, start, end in self.gantt_chart:
             idle_duration = start - idle_time_start
             if idle_duration > 0:
@@ -147,7 +188,7 @@ class SimulatorRR: # 👈 클래스 이름 변경
         if total_simulation_time > idle_time_start:
              self.total_cpu_idle_time += (total_simulation_time - idle_time_start)
 
-        print(f"--- RR (Quantum={self.time_quantum}) 시뮬레이션 종료 ---") # 👈 이름 변경
+        print(f"--- RR (Quantum={self.time_quantum}) 시뮬레이션 종료 ---")
         self.print_results(total_simulation_time, total_cpu_busy_time)
         
     

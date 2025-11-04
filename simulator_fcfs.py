@@ -3,6 +3,7 @@ import heapq  # I/O 대기 큐(우선순위 큐)를 위해 import
 
 # 1단계에서 만든 process.py 파일에서 Process 클래스와 parse_input_file 함수를 가져옵니다.
 from process import Process, parse_input_file
+from sync import get_resource
 
 class SimulatorFCFS:
     """
@@ -35,129 +36,156 @@ class SimulatorFCFS:
         self.total_cpu_idle_time = 0 # (CPU 사용률 계산용)
         self.last_cpu_busy_time = 0 
 
+    # simulator_fcfs.py의 run() 메소드
+
+    # simulator_fcfs.py의 run() 메소드 (덮어쓸 내용)
+
     def run(self):
         """
-        시뮬레이션 메인 루프
+        시뮬레이션 메인 루프 (동기화 기능 추가됨)
         """
         print("--- FCFS 시뮬레이션 시작 ---")
 
-        # 모든 프로세스가 도착하고, Ready/Waiting 큐가 비고, 실행 중인 프로세스가 없을 때까지
         while self.processes_to_arrive or self.ready_queue or self.waiting_queue or self.running_process:
             
             # --- 1. 신규 프로세스 도착 처리 ---
-            # 현재 시간에 도착한 프로세스가 있는지 확인
             while self.processes_to_arrive and self.processes_to_arrive[0][0] <= self.current_time:
                 arrival, pid, proc = heapq.heappop(self.processes_to_arrive)
                 proc.state = Process.READY
-                proc.last_ready_time = self.current_time # 👈 (정확) Ready 큐 진입 시간 기록
-                self.ready_queue.append(proc) # FCFS 큐의 맨 뒤에 추가
+                proc.last_ready_time = self.current_time 
+                self.ready_queue.append(proc) 
                 print(f"[Time {self.current_time:3d}] 프로세스 {pid} 도착 (Ready 큐 진입)")
 
-            # --- 2. I/O 완료 처리 (I/O 인터럽트) ---
-            # I/O 작업이 끝난 프로세스가 있는지 확인
+            # --- 2. I/O 완료 처리 ---
             while self.waiting_queue and self.waiting_queue[0][0] <= self.current_time:
                 io_finish_time, pid, proc = heapq.heappop(self.waiting_queue)
                 proc.state = Process.READY
-                proc.last_ready_time = self.current_time # 👈 (정확) Ready 큐 재진입 시간 기록
-                self.ready_queue.append(proc) # FCFS 큐의 맨 뒤에 추가
+                proc.last_ready_time = self.current_time 
+                self.ready_queue.append(proc) 
                 print(f"[Time {self.current_time:3d}] 프로세스 {pid} I/O 완료 (Ready 큐 진입)")
 
-            # --- 3. CPU 작업 처리 (Dispatcher 및 실행) ---
-            
-            # 3-1. 현재 실행 중인 프로세스가 없다면 (CPU가 비었다면)
+            # --- 3. CPU 작업 처리 (Dispatcher) ---
             if not self.running_process:
-                # Ready 큐에서 다음 프로세스를 가져옴 (FCFS)
                 if self.ready_queue:
-                    self.running_process = self.ready_queue.popleft() # 큐의 맨 앞을 꺼냄
+                    self.running_process = self.ready_queue.popleft() 
                     self.running_process.state = Process.RUNNING
                     
-                    # 💡 (정확) 대기 시간 통계 업데이트
-                    # (현재 시간 - Ready 큐에 들어온 시간)
                     wait = self.current_time - self.running_process.last_ready_time
-                    self.running_process.wait_time += wait # 👈 누적 대기 시간에 합산
+                    self.running_process.wait_time += wait
                     
-                    # 간트 차트 기록
-                    self.gantt_chart.append((self.running_process.pid, self.current_time)) # (PID, 시작시간)
-                    print(f"[Time {self.current_time:3d}] 프로세스 {self.running_process.pid} 실행 시작 (대기: {wait}ms, 총 대기: {self.running_process.wait_time}ms)")
+                    print(f"[Time {self.current_time:3d}] 프로세스 {self.running_process.pid} 선택됨 (대기: {wait}ms, 총 대기: {self.running_process.wait_time}ms)")
                 
-                # CPU 유휴 상태 (Ready 큐에도 프로세스가 없음)
                 else:
-                    # 이번 타임 슬롯은 아무도 실행하지 않음
-                    pass 
+                    pass # CPU 유휴
 
-            # 3-2. 현재 실행 중인 프로세스가 있다면
+            # --- 3-2. 실행 로직 ---
             if self.running_process:
                 proc = self.running_process
                 
-                # 3-2-a. CPU 버스트 1 감소
-                proc.remaining_cpu_time -= 1
-                
-                # 3-2-b. CPU 버스트가 끝났는지 검사
-                if proc.remaining_cpu_time == 0:
-                    print(f"[Time {self.current_time + 1:3d}] 프로세스 {proc.pid} CPU 버스트 완료")
-                    
-                    # 간트 차트 종료 시간 기록
-                    start_time = self.gantt_chart[-1][1]
-                    self.gantt_chart[-1] = (proc.pid, start_time, self.current_time + 1)
-                    self.last_cpu_busy_time = self.current_time + 1
-                    
-                    # 다음 작업으로 인덱스 이동
-                    proc.current_burst_index += 1
+                # [수정됨] get_current_burst_type() -> get_current_burst()
+                current_burst = proc.get_current_burst() 
 
-                    # 3-2-c. 다음 작업(I/O)이 있는지?
-                    if proc.current_burst_index < len(proc.burst_pattern):
-                        proc.state = Process.WAITING
-                        io_duration = proc.burst_pattern[proc.current_burst_index]
-                        
-                        # I/O 완료 시간 계산하여 waiting_queue에 삽입
-                        io_finish_time = self.current_time + 1 + io_duration
-                        heapq.heappush(self.waiting_queue, (io_finish_time, proc.pid, proc))
-                        print(f"[Time {self.current_time + 1:3d}] 프로세스 {proc.pid} I/O 시작 (대기 {io_duration}ms)")
-
-                        # 다음 CPU 버스트 준비
-                        proc.current_burst_index += 1
-                        if proc.current_burst_index < len(proc.burst_pattern):
-                            proc.remaining_cpu_time = proc.burst_pattern[proc.current_burst_index]
-
-                    # 3-2-d. 모든 작업이 끝났는지? (종료)
-                    else:
-                        proc.state = Process.TERMINATED
-                        proc.completion_time = self.current_time + 1
-                        proc.turnaround_time = proc.completion_time - proc.arrival_time
-                        self.completed_processes.append(proc)
-                        print(f"[Time {self.current_time + 1:3d}] 프로세스 {proc.pid} 종료")
-
-                    # CPU 비우기
+                # 3-2-a. TERMINATED (모든 작업 완료)
+                if not current_burst:
+                    proc.state = Process.TERMINATED
+                    proc.completion_time = self.current_time
+                    proc.turnaround_time = proc.completion_time - proc.arrival_time
+                    self.completed_processes.append(proc)
+                    print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid} 종료")
                     self.running_process = None
 
-            # --- 4. 통계 업데이트 (CPU 유휴 시간) ---
-            # (버그 코드 삭제됨 - 정확)
-            if not self.running_process and not self.ready_queue and self.waiting_queue:
-                pass 
-            elif not self.running_process and not self.ready_queue and not self.waiting_queue:
-                if self.processes_to_arrive:
-                    pass 
-            
+                # 3-2-b. 'CPU'
+                elif current_burst[0] == 'CPU':
+                    if (not self.gantt_chart or 
+                        self.gantt_chart[-1][0] != proc.pid or 
+                        len(self.gantt_chart[-1]) == 3):
+                        
+                        self.gantt_chart.append((proc.pid, self.current_time))
+                        print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid} CPU 작업 시작 (수행 시간: {proc.remaining_cpu_time}ms)")
 
+                    proc.remaining_cpu_time -= 1
+                    
+                    if proc.remaining_cpu_time == 0:
+                        print(f"[Time {self.current_time + 1:3d}] 프로세스 {proc.pid} CPU 버스트 완료")
+                        
+                        start_time = self.gantt_chart[-1][1]
+                        self.gantt_chart[-1] = (proc.pid, start_time, self.current_time + 1)
+                        self.last_cpu_busy_time = self.current_time + 1
+                        
+                        proc.advance_to_next_burst()
+                        # (다음 명령이 IO/LOCK일 수 있으므로 CPU를 즉시 반납하지 않음)
+
+                # 3-2-c. 'IO'
+                elif current_burst[0] == 'IO':
+                    io_duration = current_burst[1]
+                    proc.state = Process.WAITING
+                    io_finish_time = self.current_time + io_duration
+                    
+                    heapq.heappush(self.waiting_queue, (io_finish_time, proc.pid, proc))
+                    print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid} I/O 시작 (대기 {io_duration}ms)")
+
+                    proc.advance_to_next_burst()
+                    self.running_process = None  # IO 시작 시 CPU 반납
+
+                # 3-2-d. 'LOCK'
+                elif current_burst[0] == 'LOCK':
+                    resource_name = current_burst[1]
+                    resource = get_resource(resource_name)
+                    
+                    if not resource:
+                        print(f"!!! [Time {self.current_time:3d}] 오류: P{proc.pid}가 존재하지 않는 자원 '{resource_name}'을(를) 요청했습니다.")
+                        proc.advance_to_next_burst()
+                    else:
+                        print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid}이(가) '{resource_name}' Lock 시도...")
+                        
+                        if resource.lock(proc, self.current_time):
+                            print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid}이(가) '{resource_name}' Lock 획득")
+                            proc.advance_to_next_burst()
+                        else:
+                            print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid}이(가) '{resource_name}' Lock 실패. (자원 대기)")
+                            proc.state = Process.WAITING
+                            self.running_process = None # Lock 실패 시 CPU 반납
+
+                # 3-2-e. 'UNLOCK'
+                elif current_burst[0] == 'UNLOCK':
+                    resource_name = current_burst[1]
+                    resource = get_resource(resource_name)
+                    
+                    if not resource:
+                        print(f"!!! [Time {self.current_time:3d}] 오류: P{proc.pid}가 존재하지 않는 자원 '{resource_name}'을(를) Unlock하려 합니다.")
+                        proc.advance_to_next_burst()
+                    else:
+                        print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid}이(가) '{resource_name}' Unlock 시도...")
+                        
+                        woken_process = resource.unlock(proc, self.current_time)
+                        
+                        if woken_process:
+                            woken_process.state = Process.READY
+                            woken_process.last_ready_time = self.current_time
+                            self.ready_queue.append(woken_process)
+                            print(f"[Time {self.current_time:3d}] 프로세스 {woken_process.pid}이(가) '{resource_name}' 획득 (Ready 큐 진입)")
+
+                        proc.advance_to_next_burst()
+            
             # --- 5. 시간 증가 ---
             self.current_time += 1
         
-        # 시뮬레이션 종료 후 총 시간 기록
+        # --- 시뮬레이션 종료 처리 ---
         total_simulation_time = self.current_time
         
-        # (CPU 사용률 계산이 더 정확해졌습니다)
         total_cpu_busy_time = 0
         idle_time_start = 0
+        
+        self.gantt_chart = [entry for entry in self.gantt_chart if len(entry) == 3] 
+
         for pid, start, end in self.gantt_chart:
-            # 간트 차트의 '빈 시간'을 계산
             idle_duration = start - idle_time_start
             if idle_duration > 0:
                 self.total_cpu_idle_time += idle_duration
             
             total_cpu_busy_time += (end - start)
-            idle_time_start = end # 다음 유휴 시간 계산을 위해 시작점 갱신
+            idle_time_start = end 
 
-        # 마지막 작업이 끝난 후 총 시간까지의 유휴 시간
         if total_simulation_time > idle_time_start:
              self.total_cpu_idle_time += (total_simulation_time - idle_time_start)
 
