@@ -2,12 +2,19 @@
 
 import collections
 
+RESOURCE_ID_COUNTER = 0
+
 class Resource:
     """
     Mutex 역할을 하는 공유 자원 클래스입니다.
     """
     def __init__(self, name):
+        global RESOURCE_ID_COUNTER # 👈 [ 2. 이 줄을 추가합니다 ]
+        
         self.name = name
+        self.id = RESOURCE_ID_COUNTER # 👈 [ 3. 이 줄을 추가합니다 ]
+        RESOURCE_ID_COUNTER += 1      # 👈 [ 4. 이 줄을 추가합니다 ]
+        
         self.is_locked = False
         self.owner_pid = None
         
@@ -75,13 +82,14 @@ class Resource:
 RESOURCE_REGISTRY = {}
 
 def initialize_resources(resource_names):
-    """
-    시뮬레이션 시작 시 사용할 모든 자원을 초기화합니다.
-    """
     global RESOURCE_REGISTRY
+    global RESOURCE_ID_COUNTER # 👈 [ 5. 이 줄을 추가합니다 ]
+    
     RESOURCE_REGISTRY.clear()
+    RESOURCE_ID_COUNTER = 0      # 👈 [ 6. 이 줄을 추가합니다 ]
     
     for name in resource_names:
+        # (Resource가 생성될 때마다 self.id가 0, 1, 2...로 자동 할당됨)
         RESOURCE_REGISTRY[name] = Resource(name)
 
 def get_resource(name):

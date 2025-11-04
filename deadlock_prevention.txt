@@ -1,0 +1,8 @@
+# 교착상태 (Deadlock) 예방 테스트
+# R1 (ID=0), R2 (ID=1)
+
+# P1: R1(0) -> R2(1) (올바른 순서)
+1,0,3,"CPU:2,LOCK:R1,CPU:2,LOCK:R2,CPU:5,UNLOCK:R2,UNLOCK:R1",0,0
+
+# P2: R2(1) -> R1(0) (잘못된 순서 - 교착상태 유발)
+2,1,1,"CPU:2,LOCK:R2,CPU:2,LOCK:R1,CPU:5,UNLOCK:R1,UNLOCK:R2",0,0

@@ -60,6 +60,7 @@ class Process:
             self.remaining_cpu_time = self.burst_pattern[0][1]
 
         self.state = Process.READY
+        self.held_resources = []
 
         # 실시간 스케줄링용
         self.period = period

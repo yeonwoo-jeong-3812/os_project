@@ -10,39 +10,29 @@ class SimulatorFCFS:
     FCFS 스케줄링 알고리즘을 위한 시뮬레이터 클래스
     """
     def __init__(self, process_list):
-        # 1. 프로세스 목록을 '도착 시간(arrival_time)' 기준으로
-        #    최소 힙(min-heap)에 저장합니다. (도착 순서대로 꺼내기 위함)
-        #    - 힙에는 (도착시간, PID, 프로세스) 튜플을 저장 (PID는 고유성 보장용)
         self.processes_to_arrive = []
         for proc in process_list:
-            # 💡 주의: process_list를 재사용하려면 깊은 복사(deep copy)가 필요하지만,
-            # 지금은 main.py에서 매번 parse_input_file()을 호출한다고 가정합니다.
             heapq.heappush(self.processes_to_arrive, (proc.arrival_time, proc.pid, proc))
 
-        # 2. Ready 큐: FCFS이므로 간단한 FIFO 큐 (deque) 사용
+        # --- 👇 [ 2. 'deque'로 수정 (FIFO 큐) ] ---
         self.ready_queue = collections.deque()
         
-        # 3. Waiting 큐: I/O 작업 중인 프로세스 관리
-        #    (IO_완료시간, PID, 프로세스) 튜플을 저장하는 최소 힙
         self.waiting_queue = []
-        
-        # 4. 기타 상태 변수
         self.current_time = 0
         self.running_process = None
-        self.completed_processes = [] # 통계용
+        self.completed_processes = []
         
-        # 5. 통계 및 로깅
-        self.gantt_chart = [] # (PID, 시작, 종료) 기록
-        self.total_cpu_idle_time = 0 # (CPU 사용률 계산용)
-        self.last_cpu_busy_time = 0 
-
-    # simulator_fcfs.py의 run() 메소드
-
-    # simulator_fcfs.py의 run() 메소드 (덮어쓸 내용)
+        self.gantt_chart = []
+        self.total_cpu_idle_time = 0
+        self.last_cpu_busy_time = 0
+        
+        # [문맥 전환 횟수 추가]
+        self.context_switches = 0
+        self.cpu_was_idle = True
 
     def run(self):
         """
-        시뮬레이션 메인 루프 (동기화 기능 추가됨)
+        시뮬레이션 메인 루프 (동기화 기능 + FCFS 버그 수정됨)
         """
         print("--- FCFS 시뮬레이션 시작 ---")
 
@@ -53,7 +43,7 @@ class SimulatorFCFS:
                 arrival, pid, proc = heapq.heappop(self.processes_to_arrive)
                 proc.state = Process.READY
                 proc.last_ready_time = self.current_time 
-                self.ready_queue.append(proc) 
+                self.ready_queue.append(proc) # 👈 뒤에 추가
                 print(f"[Time {self.current_time:3d}] 프로세스 {pid} 도착 (Ready 큐 진입)")
 
             # --- 2. I/O 완료 처리 ---
@@ -61,14 +51,19 @@ class SimulatorFCFS:
                 io_finish_time, pid, proc = heapq.heappop(self.waiting_queue)
                 proc.state = Process.READY
                 proc.last_ready_time = self.current_time 
-                self.ready_queue.append(proc) 
+                self.ready_queue.append(proc) # 👈 뒤에 추가
                 print(f"[Time {self.current_time:3d}] 프로세스 {pid} I/O 완료 (Ready 큐 진입)")
 
             # --- 3. CPU 작업 처리 (Dispatcher) ---
             if not self.running_process:
                 if self.ready_queue:
+                    # --- 👇 [ 3. 'popleft()'로 수정 (앞에서 꺼냄) ] ---
                     self.running_process = self.ready_queue.popleft() 
                     self.running_process.state = Process.RUNNING
+                    
+                    if not self.cpu_was_idle:
+                        self.context_switches += 1
+                    self.cpu_was_idle = False
                     
                     wait = self.current_time - self.running_process.last_ready_time
                     self.running_process.wait_time += wait
@@ -76,13 +71,12 @@ class SimulatorFCFS:
                     print(f"[Time {self.current_time:3d}] 프로세스 {self.running_process.pid} 선택됨 (대기: {wait}ms, 총 대기: {self.running_process.wait_time}ms)")
                 
                 else:
-                    pass # CPU 유휴
+                    self.cpu_was_idle = True # CPU 유휴
+                    pass 
 
             # --- 3-2. 실행 로직 ---
             if self.running_process:
                 proc = self.running_process
-                
-                # [수정됨] get_current_burst_type() -> get_current_burst()
                 current_burst = proc.get_current_burst() 
 
                 # 3-2-a. TERMINATED (모든 작업 완료)
@@ -93,6 +87,7 @@ class SimulatorFCFS:
                     self.completed_processes.append(proc)
                     print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid} 종료")
                     self.running_process = None
+                    self.cpu_was_idle = True # CPU 비었음
 
                 # 3-2-b. 'CPU'
                 elif current_burst[0] == 'CPU':
@@ -113,7 +108,16 @@ class SimulatorFCFS:
                         self.last_cpu_busy_time = self.current_time + 1
                         
                         proc.advance_to_next_burst()
-                        # (다음 명령이 IO/LOCK일 수 있으므로 CPU를 즉시 반납하지 않음)
+                        
+                        # [버그 수정] 프로세스 증발 방지
+                        if not proc.get_current_burst():
+                            proc.state = Process.TERMINATED
+                            proc.completion_time = self.current_time + 1
+                            proc.turnaround_time = proc.completion_time - proc.arrival_time
+                            self.completed_processes.append(proc)
+                            print(f"[Time {self.current_time + 1:3d}] 프로세스 {proc.pid} 종료")
+                            self.running_process = None
+                            self.cpu_was_idle = True
 
                 # 3-2-c. 'IO'
                 elif current_burst[0] == 'IO':
@@ -125,7 +129,8 @@ class SimulatorFCFS:
                     print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid} I/O 시작 (대기 {io_duration}ms)")
 
                     proc.advance_to_next_burst()
-                    self.running_process = None  # IO 시작 시 CPU 반납
+                    self.running_process = None
+                    self.cpu_was_idle = True # CPU 비었음
 
                 # 3-2-d. 'LOCK'
                 elif current_burst[0] == 'LOCK':
@@ -144,7 +149,8 @@ class SimulatorFCFS:
                         else:
                             print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid}이(가) '{resource_name}' Lock 실패. (자원 대기)")
                             proc.state = Process.WAITING
-                            self.running_process = None # Lock 실패 시 CPU 반납
+                            self.running_process = None
+                            self.cpu_was_idle = True # CPU 비었음
 
                 # 3-2-e. 'UNLOCK'
                 elif current_burst[0] == 'UNLOCK':
@@ -162,7 +168,7 @@ class SimulatorFCFS:
                         if woken_process:
                             woken_process.state = Process.READY
                             woken_process.last_ready_time = self.current_time
-                            self.ready_queue.append(woken_process)
+                            self.ready_queue.append(woken_process) # 👈 뒤에 추가
                             print(f"[Time {self.current_time:3d}] 프로세스 {woken_process.pid}이(가) '{resource_name}' 획득 (Ready 큐 진입)")
 
                         proc.advance_to_next_burst()
@@ -170,7 +176,7 @@ class SimulatorFCFS:
             # --- 5. 시간 증가 ---
             self.current_time += 1
         
-        # --- 시뮬레이션 종료 처리 ---
+        # --- 시뮬레이션 종료 처리 --- (이하 동일)
         total_simulation_time = self.current_time
         
         total_cpu_busy_time = 0

@@ -25,7 +25,23 @@ class SimulatorPriorityStatic: # 👈 1. 클래스 이름 변경
         self.last_cpu_busy_time = 0 
 
     def run(self):
-        print(f"\n--- 정적 우선순위 시뮬레이션 시작 ---") # 👈 로그 변경
+        print(f"\n--- 정적 우선순위 시뮬레이션 시작 ---") 
+
+        # [우선순위 헬퍼 함수]
+        def get_priority_key(proc):
+            """
+            프로세스의 현재 동적 우선순위 튜플을 반환합니다.
+            (0-tick 명령어 최우선)
+            """
+            burst = proc.get_current_burst()
+            cmd_prio = 1 # 기본값 (CPU)
+            
+            if burst and burst[0] != 'CPU':
+                cmd_prio = 0 # 0-tick (LOCK, UNLOCK)
+            
+            # (명령어 우선순위, 정적 우선순위, PID)
+            return (cmd_prio, proc.static_priority, proc.pid)
+
 
         while self.processes_to_arrive or self.ready_queue or self.waiting_queue or self.running_process:
             
@@ -36,14 +52,17 @@ class SimulatorPriorityStatic: # 👈 1. 클래스 이름 변경
                 proc.last_ready_time = self.current_time
                 
                 current_burst = proc.get_current_burst()
-                if current_burst and current_burst[0] == 'CPU':
-                    # (1, 정적우선순위, PID, proc)
-                    heapq.heappush(self.ready_queue, (1, proc.static_priority, proc.pid, proc))
+                if current_burst:
+                    # (튜플, 프로세스)로 힙에 저장
+                    heapq.heappush(self.ready_queue, (get_priority_key(proc), proc))
                     print(f"[Time {self.current_time:3d}] 프로세스 {pid} 도착 (Ready 큐 진입, Prio: {proc.static_priority})")
-                elif current_burst: # LOCK, UNLOCK (0-tick)
-                    # (0, 정적우선순위, PID, proc) -> 최우선
-                    heapq.heappush(self.ready_queue, (0, proc.static_priority, proc.pid, proc))
-                    print(f"[Time {self.current_time:3d}] 프로세스 {pid} 도착 (Ready 큐 진입, 명령: {current_burst[0]})")
+                else:
+                    # 도착하자마자 할 일이 없는 프로세스 (즉시 종료)
+                    proc.state = Process.TERMINATED
+                    proc.completion_time = self.current_time
+                    proc.turnaround_time = proc.completion_time - proc.arrival_time
+                    self.completed_processes.append(proc)
+                    print(f"[Time {self.current_time:3d}] 프로세스 {pid} 도착 즉시 종료")
 
             # --- 2. I/O 완료 처리 ---
             while self.waiting_queue and self.waiting_queue[0][0] <= self.current_time:
@@ -52,89 +71,76 @@ class SimulatorPriorityStatic: # 👈 1. 클래스 이름 변경
                 proc.last_ready_time = self.current_time
                 
                 current_burst = proc.get_current_burst()
-                if current_burst and current_burst[0] == 'CPU':
-                    heapq.heappush(self.ready_queue, (1, proc.static_priority, proc.pid, proc))
+                if current_burst:
+                    heapq.heappush(self.ready_queue, (get_priority_key(proc), proc))
                     print(f"[Time {self.current_time:3d}] 프로세스 {pid} I/O 완료 (Ready 큐 진입, Prio: {proc.static_priority})")
-                elif current_burst: # LOCK, UNLOCK
-                    heapq.heappush(self.ready_queue, (0, proc.static_priority, proc.pid, proc))
-                    print(f"[Time {self.current_time:3d}] 프로세스 {pid} I/O 완료 (Ready 큐 진입, 명령: {current_burst[0]})")
+                else:
+                    proc.state = Process.TERMINATED
+                    proc.completion_time = self.current_time
+                    proc.turnaround_time = proc.completion_time - proc.arrival_time
+                    self.completed_processes.append(proc)
+                    print(f"[Time {self.current_time:3d}] 프로세스 {pid} I/O 완료 후 종료")
 
-            # --- 💡 4. 선점(Preemption) 로직 (우선순위 기준) ---
+            # --- 3. 선점(Preemption) 로직 (우선순위 기준) ---
             if (self.running_process and 
                 self.running_process.get_current_burst() and
                 self.running_process.get_current_burst()[0] == 'CPU' and 
                 self.ready_queue):
                 
-                # Ready 큐에서 가장 우선순위 높은 작업 확인
-                best_prio_tuple = self.ready_queue[0][:2] # (cmd_prio, static_prio)
-                best_pid = self.ready_queue[0][2]
-                
-                # 현재 실행 중인 작업의 우선순위 튜플
-                running_prio_tuple = (1, self.running_process.static_priority) # (CPU 작업이므로 '1')
+                best_prio_tuple, best_proc = self.ready_queue[0]
+                running_prio_tuple = get_priority_key(self.running_process)
                 
                 if best_prio_tuple < running_prio_tuple:
-                    print(f"[Time {self.current_time:3d}] 프로세스 {self.running_process.pid} 선점됨 (새 작업 P{best_pid} 우선순위 높음)")
+                    print(f"[Time {self.current_time:3d}] 프로세스 {self.running_process.pid} 선점됨 (새 작업 P{best_proc.pid} 우선순위 높음)")
                     
                     if self.gantt_chart and self.gantt_chart[-1][0] == self.running_process.pid and len(self.gantt_chart[-1]) == 2:
-                        start_time = self.gantt_chart[-1][1]
-                        self.gantt_chart[-1] = (self.running_process.pid, start_time, self.current_time)
+                        self.gantt_chart[-1] = (self.running_process.pid, self.gantt_chart[-1][1], self.current_time)
                         self.last_cpu_busy_time = self.current_time
 
                     proc = self.running_process
                     proc.state = Process.READY
                     proc.last_ready_time = self.current_time
-                    # (CPU 작업이므로 '1')
-                    heapq.heappush(self.ready_queue, (1, proc.static_priority, proc.pid, proc))
+                    heapq.heappush(self.ready_queue, (get_priority_key(proc), proc))
                     
                     self.running_process = None
             
             # --- 3-1. CPU 작업 처리 (Dispatcher) ---
-            # --- 3-1. CPU 작업 처리 (Dispatcher) ---
             if not self.running_process:
                 if self.ready_queue:
-                    # [수정됨] 4개의 값을 받음: (명령어 우선순위, 정적 우선순위, PID, 프로세스)
-                    cmd_prio, static_prio, pid, self.running_process = heapq.heappop(self.ready_queue)
+                    prio_key, self.running_process = heapq.heappop(self.ready_queue)
                     
                     self.running_process.state = Process.RUNNING
-                    
                     wait = self.current_time - self.running_process.last_ready_time
                     self.running_process.wait_time += wait
                     
-                    # [수정됨] Gantt 차트와 '실행 시작' 로그는 3-2-b (CPU 실행)에서 처리하므로 여기선 '선택' 로그만 출력
-                    print(f"[Time {self.current_time:3d}] 프로세스 {self.running_process.pid} 선택됨 (Prio: {static_prio}, Cmd: {'0-tick' if cmd_prio==0 else 'CPU'}, 대기: {wait}ms)")
+                    print(f"[Time {self.current_time:3d}] 프로세스 {self.running_process.pid} 선택됨 (Prio: {prio_key[1]}, Cmd: {'0-tick' if prio_key[0]==0 else 'CPU'}, 대기: {wait}ms)")
                 
                 else:
-                    pass
+                    pass 
 
-            # --- 3-2. CPU 실행 --- (SJF와 동일. 수정 필요 없음)
+            # --- 3-2. CPU 실행 ---
             if self.running_process:
                 proc = self.running_process
                 current_burst = proc.get_current_burst()
-
-                # 3-2-a. TERMINATED
+                
                 if not current_burst:
                     proc.state = Process.TERMINATED
                     proc.completion_time = self.current_time
+                    proc.turnaround_time = proc.completion_time - proc.arrival_time
                     self.completed_processes.append(proc)
                     print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid} 종료")
                     self.running_process = None
 
-                # 3-2-b. 'CPU'
+                # 'CPU'
                 elif current_burst[0] == 'CPU':
-                    # CPU 버스트 '새로' 시작 확인
-                    if (not self.gantt_chart or 
-                        self.gantt_chart[-1][0] != proc.pid or 
-                        len(self.gantt_chart[-1]) == 3):
-                        
+                    if (not self.gantt_chart or self.gantt_chart[-1][0] != proc.pid or len(self.gantt_chart[-1]) == 3):
                         self.gantt_chart.append((proc.pid, self.current_time))
                         print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid} CPU 작업 시작 (남은 시간: {proc.remaining_cpu_time}ms)")
 
-                    # 1ms 실행
                     proc.remaining_cpu_time -= 1
                     
                     if proc.remaining_cpu_time == 0:
                         print(f"[Time {self.current_time + 1:3d}] 프로세스 {proc.pid} CPU 버스트 완료")
-                        
                         start_time = self.gantt_chart[-1][1]
                         self.gantt_chart[-1] = (proc.pid, start_time, self.current_time + 1)
                         self.last_cpu_busy_time = self.current_time + 1
@@ -143,26 +149,19 @@ class SimulatorPriorityStatic: # 👈 1. 클래스 이름 변경
                         
                         next_burst = proc.get_current_burst()
                         if next_burst:
-                            # [다음 작업이 있음] Ready 큐로 복귀
                             proc.state = Process.READY
                             proc.last_ready_time = self.current_time + 1
-                            if next_burst[0] == 'CPU':
-                                heapq.heappush(self.ready_queue, (1, proc.static_priority, proc.pid, proc))
-                            else: # LOCK, UNLOCK
-                                heapq.heappush(self.ready_queue, (0, proc.static_priority, proc.pid, proc))
-                            self.running_process = None
+                            heapq.heappush(self.ready_queue, (get_priority_key(proc), proc))
                         else:
-                            # --- 👇 [버그 수정] ---
-                            # [다음 작업이 없음] 종료 처리
                             proc.state = Process.TERMINATED
                             proc.completion_time = self.current_time + 1
                             proc.turnaround_time = proc.completion_time - proc.arrival_time
                             self.completed_processes.append(proc)
                             print(f"[Time {self.current_time + 1:3d}] 프로세스 {proc.pid} 종료")
-                            self.running_process = None
-                            # --- 👆 [버그 수정 끝] ---
+                        
+                        self.running_process = None
                     
-                # 3-2-c. 'IO'
+                # 'IO'
                 elif current_burst[0] == 'IO':
                     io_duration = current_burst[1]
                     proc.state = Process.WAITING
@@ -171,38 +170,72 @@ class SimulatorPriorityStatic: # 👈 1. 클래스 이름 변경
                     print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid} I/O 시작 (대기 {io_duration}ms)")
 
                     proc.advance_to_next_burst()
-                    self.running_process = None # CPU 반납
+                    self.running_process = None
 
-                # 3-2-d. 'LOCK'
+                # 'LOCK'
                 elif current_burst[0] == 'LOCK':
                     resource_name = current_burst[1]
                     resource = get_resource(resource_name)
                     
                     if not resource:
-                        print(f"!!! [Time {self.current_time:3d}] 오류: P{proc.pid}가 존재하지 않는 자원 '{resource_name}'을(를) 요청했습니다.")
-                        proc.advance_to_next_burst()
+                        # ... (존재하지 않는 자원 오류 처리) ...
+                        proc.advance_to_next_burst() # (다음 단계로)
                     else:
-                        print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid}이(가) '{resource_name}' Lock 시도...")
-                        if resource.lock(proc, self.current_time):
-                            print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid}이(가) '{resource_name}' Lock 획득")
-                            proc.advance_to_next_burst()
-                        else:
-                            print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid}이(가) '{resource_name}' Lock 실패. (자원 대기)")
-                            proc.state = Process.WAITING
-                            self.running_process = None
+                        # --- 👇 [ 1. 교착상태 예방 로직 시작 ] ---
+                        max_held_id = -1
+                        if proc.held_resources:
+                            max_held_id = max(res.id for res in proc.held_resources)
+                        
+                        # [규칙 위반 검사] 요청 ID가 보유한 최대 ID보다 낮은가?
+                        if resource.id < max_held_id:
+                            # --- 교착상태 예방 ---
+                            print(f"!!! [Time {self.current_time:3d}] 교착상태 예방: P{proc.pid} (보유 R_ID: {max_held_id})이(가) R_ID {resource.id}을(를) 순서 없이 요청함. 프로세스 강제 종료.")
                             
-                    if self.running_process: # (Lock 실패 시는 이미 None이 됨)
+                            # (보유한 모든 자원 즉시 반납)
+                            for res in proc.held_resources:
+                                woken_process = res.unlock(proc, self.current_time)
+                                if woken_process:
+                                    woken_process.state = Process.READY
+                                    woken_process.last_ready_time = self.current_time
+                                    woken_process.advance_to_next_burst()
+                                    heapq.heappush(self.ready_queue, (get_priority_key(woken_process), woken_process))
+                                    print(f"[Time {self.current_time:3d}] P{woken_process.pid}이(가) '{res.name}' 획득 (Ready 큐 진입)")
+                            
+                            # (프로세스 종료)
+                            proc.state = Process.TERMINATED
+                            proc.completion_time = self.current_time
+                            proc.turnaround_time = proc.completion_time - proc.arrival_time
+                            self.completed_processes.append(proc)
+                            self.running_process = None
+                        
+                        else:
+                            # --- [정상 요청] (기존 로직) ---
+                            print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid}이(가) '{resource_name}' Lock 시도...")
+                            if resource.lock(proc, self.current_time):
+                                print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid}이(가) '{resource_name}' Lock 획득")
+                                proc.held_resources.append(resource) # 👈 보유 리스트에 추가
+                                proc.advance_to_next_burst()
+                            else:
+                                print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid}이(가) '{resource_name}' Lock 실패. (자원 대기)")
+                                proc.state = Process.WAITING
+                                self.running_process = None
+                            # --- 👆 [ 교착상태 예방 로직 끝 ] ---
+                            
+                    if self.running_process:
                         next_burst = proc.get_current_burst()
                         if next_burst:
                             proc.state = Process.READY
                             proc.last_ready_time = self.current_time
-                            if next_burst[0] == 'CPU':
-                                heapq.heappush(self.ready_queue, (1, proc.static_priority, proc.pid, proc))
-                            else:
-                                heapq.heappush(self.ready_queue, (0, proc.static_priority, proc.pid, proc))
+                            heapq.heappush(self.ready_queue, (get_priority_key(proc), proc))
+                        else:
+                            proc.state = Process.TERMINATED
+                            proc.completion_time = self.current_time
+                            proc.turnaround_time = proc.completion_time - proc.arrival_time
+                            self.completed_processes.append(proc)
+                            print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid} 종료")
                         self.running_process = None
 
-                # 3-2-e. 'UNLOCK'
+                # 'UNLOCK'
                 elif current_burst[0] == 'UNLOCK':
                     resource_name = current_burst[1]
                     resource = get_resource(resource_name)
@@ -212,36 +245,43 @@ class SimulatorPriorityStatic: # 👈 1. 클래스 이름 변경
                         proc.advance_to_next_burst()
                     else:
                         print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid}이(가) '{resource_name}' Unlock 시도...")
+                        
+                        # [버그 수정 로직 시작]
+                        if resource in proc.held_resources:
+                            proc.held_resources.remove(resource)
+                        # [버그 수정 로직 끝]
+
                         woken_process = resource.unlock(proc, self.current_time)
                         
                         if woken_process:
                             woken_process.state = Process.READY
                             woken_process.last_ready_time = self.current_time
                             
-                            woken_burst = woken_process.get_current_burst()
-                            if woken_burst and woken_burst[0] == 'CPU':
-                                heapq.heappush(self.ready_queue, (1, woken_process.static_priority, woken_process.pid, woken_process))
-                            elif woken_burst:
-                                heapq.heappush(self.ready_queue, (0, woken_process.static_priority, woken_process.pid, woken_process))
+                            woken_process.advance_to_next_burst() 
+                            
+                            heapq.heappush(self.ready_queue, (get_priority_key(woken_process), woken_process))
                             print(f"[Time {self.current_time:3d}] 프로세스 {woken_process.pid}이(가) '{resource_name}' 획득 (Ready 큐 진입)")
-
+                        
                         proc.advance_to_next_burst()
 
+                    # --- 👇 [ 243행 주변의 최종 복귀/종료 로직 ] ---
                     next_burst = proc.get_current_burst()
                     if next_burst:
                         proc.state = Process.READY
                         proc.last_ready_time = self.current_time
-                        if next_burst[0] == 'CPU':
-                            heapq.heappush(self.ready_queue, (1, proc.static_priority, proc.pid, proc))
-                        else:
-                            heapq.heappush(self.ready_queue, (0, proc.static_priority, proc.pid, proc))
+                        heapq.heappush(self.ready_queue, (get_priority_key(proc), proc))
+                    else:
+                        proc.state = Process.TERMINATED
+                        proc.completion_time = self.current_time
+                        proc.turnaround_time = proc.completion_time - proc.arrival_time
+                        self.completed_processes.append(proc)
+                        print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid} 종료")
                     self.running_process = None
+                    # --- 👆 [ 수정 끝 ] ---
 
-            # --- 4. 통계 업데이트 --- (변경 없음)
-            # --- 5. 시간 증가 ---
             self.current_time += 1
         
-        # --- 시뮬레이션 종료 처리 --- (SJF와 동일. 수정 필요 없음)
+        # --- 시뮬레이션 종료 처리 ---
         total_simulation_time = self.current_time
         
         total_cpu_busy_time = 0
@@ -258,7 +298,7 @@ class SimulatorPriorityStatic: # 👈 1. 클래스 이름 변경
         if total_simulation_time > idle_time_start:
              self.total_cpu_idle_time += (total_simulation_time - idle_time_start)
 
-        print(f"--- 정적 우선순위 시뮬레이션 종료 ---") # 👈 6. 로그 변경
+        print(f"--- 정적 우선순위 시뮬레이션 종료 ---")
         self.print_results(total_simulation_time, total_cpu_busy_time)
         
     
