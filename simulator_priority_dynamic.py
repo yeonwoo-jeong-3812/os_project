@@ -23,7 +23,11 @@ class SimulatorPriorityDynamic:
         self.gantt_chart = []
         self.total_cpu_idle_time = 0
         self.last_cpu_busy_time = 0 
-        self.aging_factor = aging_factor
+        
+        # [문맥 전환 횟수 추가]
+        self.context_switches = 0
+        self.cpu_was_idle = True
+self.aging_factor = aging_factor
 
     def run(self):
         print(f"\n--- 동적 우선순위 (Aging) 시뮬레이션 시작 (Factor={self.aging_factor}) ---")
@@ -106,6 +110,7 @@ class SimulatorPriorityDynamic:
                     print(f"[Time {self.current_time:3d}] 프로세스 {self.running_process.pid} 실행 시작 (동적P: {self.running_process.dynamic_priority}, 대기: {wait}ms)")
                 
                 else:
+                    self.cpu_was_idle = True
                     pass # 계속 실행
 
             elif not self.running_process and best_proc_in_queue:
@@ -114,6 +119,10 @@ class SimulatorPriorityDynamic:
                 self.ready_queue.remove(best_proc_in_queue)
                 self.running_process.state = Process.RUNNING
 
+                    
+                    if not self.cpu_was_idle:
+                        self.context_switches += 1
+                    self.cpu_was_idle = False
                 wait = self.current_time - self.running_process.last_ready_time
                 self.running_process.wait_time += wait
                 # (로그 및 간트차트는 3-3 실행 로직에서 처리)
@@ -287,6 +296,7 @@ class SimulatorPriorityDynamic:
         print(f"CPU 총 유휴 시간      : {self.total_cpu_idle_time}")
         print(f"CPU 총 사용 시간      : {total_busy_time}")
         print(f"CPU 사용률 (Util)   : {cpu_utilization:.2f} %")
+        print(f"총 문맥 전환 횟수     : {self.context_switches}")
 
         print("\n--- 간트 차트 (Gantt Chart) ---")
         print("PID | 시작 -> 종료")

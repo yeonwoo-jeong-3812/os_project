@@ -24,7 +24,11 @@ class SimulatorPriorityStatic: # 👈 1. 클래스 이름 변경
         self.total_cpu_idle_time = 0
         self.last_cpu_busy_time = 0 
 
-    def run(self):
+    
+        # [문맥 전환 횟수 추가]
+        self.context_switches = 0
+        self.cpu_was_idle = True
+def run(self):
         print(f"\n--- 정적 우선순위 시뮬레이션 시작 ---") 
 
         # [우선순위 헬퍼 함수]
@@ -110,12 +114,17 @@ class SimulatorPriorityStatic: # 👈 1. 클래스 이름 변경
                     prio_key, self.running_process = heapq.heappop(self.ready_queue)
                     
                     self.running_process.state = Process.RUNNING
+                    
+                    if not self.cpu_was_idle:
+                        self.context_switches += 1
+                    self.cpu_was_idle = False
                     wait = self.current_time - self.running_process.last_ready_time
                     self.running_process.wait_time += wait
                     
                     print(f"[Time {self.current_time:3d}] 프로세스 {self.running_process.pid} 선택됨 (Prio: {prio_key[1]}, Cmd: {'0-tick' if prio_key[0]==0 else 'CPU'}, 대기: {wait}ms)")
                 
                 else:
+                    self.cpu_was_idle = True
                     pass 
 
             # --- 3-2. CPU 실행 ---
@@ -336,6 +345,7 @@ class SimulatorPriorityStatic: # 👈 1. 클래스 이름 변경
         print(f"CPU 총 유휴 시간      : {self.total_cpu_idle_time}")
         print(f"CPU 총 사용 시간      : {total_busy_time}")
         print(f"CPU 사용률 (Util)   : {cpu_utilization:.2f} %")
+        print(f"총 문맥 전환 횟수     : {self.context_switches}")
 
         print("\n--- 간트 차트 (Gantt Chart) ---")
         print("PID | 시작 -> 종료")

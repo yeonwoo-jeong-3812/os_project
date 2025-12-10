@@ -269,21 +269,23 @@ class SchedulingVisualizer:
         
         Args:
             rt_results_dict: {
-                'RM': {'deadline_misses': int, 'avg_turnaround': float, ...},
-                'EDF': {'deadline_misses': int, 'avg_turnaround': float, ...}
+                'RM': {'deadline_misses': int, 'avg_turnaround': float, 'context_switches': int, ...},
+                'EDF': {'deadline_misses': int, 'avg_turnaround': float, 'context_switches': int, ...}
             }
             save_path: Save path
         """
         algorithms = list(rt_results_dict.keys())
         deadline_misses = [rt_results_dict[alg]['deadline_misses'] for alg in algorithms]
         avg_tt = [rt_results_dict[alg]['avg_turnaround'] for alg in algorithms]
+        ctx_sw = [rt_results_dict[alg]['context_switches'] for alg in algorithms]
         
         # Auto-adjust figure size based on screen
-        fig = plt.figure(figsize=(self.fig_width * 0.85, self.fig_height * 0.7))
+        fig = plt.figure(figsize=(self.fig_width * 0.95, self.fig_height * 0.7))
         
-        # Create subplots with more space
-        ax1 = plt.subplot(1, 2, 1)
-        ax2 = plt.subplot(1, 2, 2)
+        # Create subplots with more space (1x3 layout)
+        ax1 = plt.subplot(1, 3, 1)
+        ax2 = plt.subplot(1, 3, 2)
+        ax3 = plt.subplot(1, 3, 3)
         
         # Deadline miss count
         colors_bar = ['#FF6B6B' if x > 0 else '#4ECDC4' for x in deadline_misses]
@@ -305,11 +307,20 @@ class SchedulingVisualizer:
         for i, v in enumerate(avg_tt):
             ax2.text(i, v + max(avg_tt)*0.04, f'{v:.2f}', ha='center', fontsize=11)
         
+        # Context switches (NEW)
+        ax3.bar(algorithms, ctx_sw, color='#FFA07A', edgecolor='black', width=0.5)
+        ax3.set_ylabel('횟수', fontsize=13)
+        ax3.set_title('총 문맥 전환 횟수', fontsize=14, fontweight='bold', pad=20)
+        ax3.grid(axis='y', alpha=0.3)
+        ax3.set_ylim([0, max(ctx_sw) * 1.2 if max(ctx_sw) > 0 else 10])
+        for i, v in enumerate(ctx_sw):
+            ax3.text(i, v + (max(ctx_sw)*0.04 if max(ctx_sw) > 0 else 0.5), f'{v}', ha='center', fontsize=11)
+        
         # Main title with more space
         fig.suptitle('실시간 스케줄링 비교 (RM vs EDF)', fontsize=16, fontweight='bold', y=0.96)
         
         # Better layout with more margins
-        plt.subplots_adjust(left=0.08, right=0.95, top=0.88, bottom=0.1, wspace=0.25)
+        plt.subplots_adjust(left=0.05, right=0.98, top=0.88, bottom=0.1, wspace=0.22)
         
         if save_path:
             plt.savefig(save_path, dpi=300, bbox_inches='tight', pad_inches=0.5)
@@ -341,7 +352,8 @@ class SchedulingVisualizer:
                 'algorithm_name': {
                     'avg_turnaround': float,
                     'avg_waiting': float,
-                    'cpu_utilization': float
+                    'cpu_utilization': float,
+                    'context_switches': int
                 }
             }
             save_path: Save path
@@ -350,9 +362,11 @@ class SchedulingVisualizer:
         avg_tt = [results_dict[alg]['avg_turnaround'] for alg in algorithms]
         avg_wt = [results_dict[alg]['avg_waiting'] for alg in algorithms]
         cpu_util = [results_dict[alg]['cpu_utilization'] for alg in algorithms]
+        ctx_sw = [results_dict[alg]['context_switches'] for alg in algorithms]
         
-        # Auto-adjust figure size based on screen
-        fig, axes = plt.subplots(1, 3, figsize=(self.fig_width * 0.95, self.fig_height * 0.75))
+        # Auto-adjust figure size based on screen (2x2 grid)
+        fig, axes = plt.subplots(2, 2, figsize=(self.fig_width * 0.95, self.fig_height * 0.85))
+        axes = axes.flatten()
         
         # Average turnaround time
         axes[0].bar(algorithms, avg_tt, color='#FF6B6B', edgecolor='black', width=0.6)
@@ -381,13 +395,22 @@ class SchedulingVisualizer:
         for i, v in enumerate(cpu_util):
             axes[2].text(i, v + 2, f'{v:.2f}%', ha='center', fontsize=10)
         
+        # Context switches (NEW)
+        axes[3].bar(algorithms, ctx_sw, color='#FFA07A', edgecolor='black', width=0.6)
+        axes[3].set_ylabel('횟수', fontsize=13)
+        axes[3].set_title('총 문맥 전환 횟수', fontsize=15, fontweight='bold', pad=20)
+        axes[3].grid(axis='y', alpha=0.3)
+        axes[3].set_ylim([0, max(ctx_sw) * 1.15 if max(ctx_sw) > 0 else 10])
+        for i, v in enumerate(ctx_sw):
+            axes[3].text(i, v + max(ctx_sw)*0.02 if max(ctx_sw) > 0 else 0.5, f'{v}', ha='center', fontsize=10)
+        
         # Rotate x-axis labels for better visibility
         for ax in axes:
             ax.tick_params(axis='x', rotation=15, labelsize=11)
             ax.tick_params(axis='y', labelsize=11)
         
         # Perfect spacing to fit fullscreen without clipping
-        plt.subplots_adjust(left=0.05, right=0.98, top=0.90, bottom=0.15, wspace=0.22)
+        plt.subplots_adjust(left=0.05, right=0.98, top=0.93, bottom=0.10, wspace=0.20, hspace=0.30)
         
         plt.tight_layout()
         

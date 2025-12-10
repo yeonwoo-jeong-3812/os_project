@@ -31,7 +31,11 @@ class SimulatorMLFQ:
         self.total_cpu_idle_time = 0
         self.last_cpu_busy_time = 0 
         
-        self.current_process_level = 0
+        
+        # [문맥 전환 횟수 추가]
+        self.context_switches = 0
+        self.cpu_was_idle = True
+self.current_process_level = 0
         self.current_quantum = 0
         self.current_time_slice = 0
 
@@ -102,6 +106,10 @@ class SimulatorMLFQ:
                 if self.running_process:
                     proc = self.running_process
                     proc.state = Process.RUNNING
+                        
+                        if not self.cpu_was_idle:
+                            self.context_switches += 1
+                        self.cpu_was_idle = False
                     wait = self.current_time - proc.last_ready_time
                     proc.wait_time += wait
                     self.current_time_slice = 0 # 퀀텀 리셋
@@ -283,6 +291,7 @@ class SimulatorMLFQ:
         print(f"CPU 총 유휴 시간      : {self.total_cpu_idle_time}")
         print(f"CPU 총 사용 시간      : {total_busy_time}")
         print(f"CPU 사용률 (Util)   : {cpu_utilization:.2f} %")
+        print(f"총 문맥 전환 횟수     : {self.context_switches}")
 
         print("\n--- 간트 차트 (Gantt Chart) ---")
         print("PID | 시작 -> 종료")

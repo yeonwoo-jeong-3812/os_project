@@ -128,7 +128,8 @@ def run_simulations_with_visualization():
         comparison_results['FCFS'] = {
             'avg_turnaround': (sum(p.turnaround_time for p in sim_fcfs.completed_processes) / fcfs_n) if fcfs_n > 0 else 0,
             'avg_waiting': (sum(p.wait_time for p in sim_fcfs.completed_processes) / fcfs_n) if fcfs_n > 0 else 0,
-            'cpu_utilization': (sum(end - start for pid, start, end in sim_fcfs.gantt_chart) / sim_fcfs.current_time) * 100 if sim_fcfs.current_time > 0 else 0
+            'cpu_utilization': (sum(end - start for pid, start, end in sim_fcfs.gantt_chart) / sim_fcfs.current_time) * 100 if sim_fcfs.current_time > 0 else 0,
+            'context_switches': sim_fcfs.context_switches
         }
         
         visualizer.visualize_algorithm_complete(sim_fcfs.gantt_chart, sim_fcfs.completed_processes, "FCFS")
@@ -144,7 +145,8 @@ def run_simulations_with_visualization():
         comparison_results['RR(Q=4)'] = {
             'avg_turnaround': (sum(p.turnaround_time for p in sim_rr.completed_processes) / rr_n) if rr_n > 0 else 0,
             'avg_waiting': (sum(p.wait_time for p in sim_rr.completed_processes) / rr_n) if rr_n > 0 else 0,
-            'cpu_utilization': (sum(end - start for pid, start, end in sim_rr.gantt_chart) / sim_rr.current_time) * 100 if sim_rr.current_time > 0 else 0
+            'cpu_utilization': (sum(end - start for pid, start, end in sim_rr.gantt_chart) / sim_rr.current_time) * 100 if sim_rr.current_time > 0 else 0,
+            'context_switches': sim_rr.context_switches
         }
         
         visualizer.visualize_algorithm_complete(sim_rr.gantt_chart, sim_rr.completed_processes, "RR (Q=4)")
@@ -160,7 +162,8 @@ def run_simulations_with_visualization():
         comparison_results['SJF'] = {
             'avg_turnaround': (sum(p.turnaround_time for p in sim_sjf.completed_processes) / sjf_n) if sjf_n > 0 else 0,
             'avg_waiting': (sum(p.wait_time for p in sim_sjf.completed_processes) / sjf_n) if sjf_n > 0 else 0,
-            'cpu_utilization': (sum(end - start for pid, start, end in sim_sjf.gantt_chart) / sim_sjf.current_time) * 100 if sim_sjf.current_time > 0 else 0
+            'cpu_utilization': (sum(end - start for pid, start, end in sim_sjf.gantt_chart) / sim_sjf.current_time) * 100 if sim_sjf.current_time > 0 else 0,
+            'context_switches': sim_sjf.context_switches
         }
             
         visualizer.visualize_algorithm_complete(sim_sjf.gantt_chart, sim_sjf.completed_processes, "SJF (Preemptive)")
@@ -176,7 +179,8 @@ def run_simulations_with_visualization():
         comparison_results['Priority(Static)'] = {
             'avg_turnaround': (sum(p.turnaround_time for p in sim_prio.completed_processes) / prio_n) if prio_n > 0 else 0,
             'avg_waiting': (sum(p.wait_time for p in sim_prio.completed_processes) / prio_n) if prio_n > 0 else 0,
-            'cpu_utilization': (sum(end - start for pid, start, end in sim_prio.gantt_chart) / sim_prio.current_time) * 100 if sim_prio.current_time > 0 else 0
+            'cpu_utilization': (sum(end - start for pid, start, end in sim_prio.gantt_chart) / sim_prio.current_time) * 100 if sim_prio.current_time > 0 else 0,
+            'context_switches': sim_prio.context_switches
         }
             
         visualizer.visualize_algorithm_complete(sim_prio.gantt_chart, sim_prio.completed_processes, "Priority (Static)")
@@ -192,7 +196,8 @@ def run_simulations_with_visualization():
         comparison_results['Priority(Aging)'] = {
             'avg_turnaround': (sum(p.turnaround_time for p in sim_prio_dyn.completed_processes) / prio_dyn_n) if prio_dyn_n > 0 else 0,
             'avg_waiting': (sum(p.wait_time for p in sim_prio_dyn.completed_processes) / prio_dyn_n) if prio_dyn_n > 0 else 0,
-            'cpu_utilization': (sum(end - start for pid, start, end in sim_prio_dyn.gantt_chart) / sim_prio_dyn.current_time) * 100 if sim_prio_dyn.current_time > 0 else 0
+            'cpu_utilization': (sum(end - start for pid, start, end in sim_prio_dyn.gantt_chart) / sim_prio_dyn.current_time) * 100 if sim_prio_dyn.current_time > 0 else 0,
+            'context_switches': sim_prio_dyn.context_switches
         }
             
         visualizer.visualize_algorithm_complete(sim_prio_dyn.gantt_chart, sim_prio_dyn.completed_processes, "Priority (Aging)")
@@ -208,7 +213,8 @@ def run_simulations_with_visualization():
         comparison_results['MLFQ'] = {
             'avg_turnaround': (sum(p.turnaround_time for p in sim_mlfq.completed_processes) / mlfq_n) if mlfq_n > 0 else 0,
             'avg_waiting': (sum(p.wait_time for p in sim_mlfq.completed_processes) / mlfq_n) if mlfq_n > 0 else 0,
-            'cpu_utilization': (sum(end - start for pid, start, end in sim_mlfq.gantt_chart) / sim_mlfq.current_time) * 100 if sim_mlfq.current_time > 0 else 0
+            'cpu_utilization': (sum(end - start for pid, start, end in sim_mlfq.gantt_chart) / sim_mlfq.current_time) * 100 if sim_mlfq.current_time > 0 else 0,
+            'context_switches': sim_mlfq.context_switches
         }
             
         visualizer.visualize_algorithm_complete(sim_mlfq.gantt_chart, sim_mlfq.completed_processes, "MLFQ")
@@ -228,7 +234,8 @@ def run_simulations_with_visualization():
                 'deadline_misses': sim_rm.deadline_misses,
                 'avg_turnaround': (sum(p.turnaround_time for p in sim_rm.completed_processes) / rm_n) if rm_n > 0 else 0,
                 'avg_waiting': (sum(p.wait_time for p in sim_rm.completed_processes) / rm_n) if rm_n > 0 else 0,
-                'cpu_utilization': (sum(end - start for pid, start, end in sim_rm.gantt_chart) / sim_rm.current_time) * 100 if sim_rm.current_time > 0 else 0
+                'cpu_utilization': (sum(end - start for pid, start, end in sim_rm.gantt_chart) / sim_rm.current_time) * 100 if sim_rm.current_time > 0 else 0,
+                'context_switches': sim_rm.context_switches
             }
                 
             visualizer.visualize_algorithm_complete(sim_rm.gantt_chart, sim_rm.completed_processes, "Rate Monotonic")
@@ -246,7 +253,8 @@ def run_simulations_with_visualization():
                 'deadline_misses': sim_edf.deadline_misses,
                 'avg_turnaround': (sum(p.turnaround_time for p in sim_edf.completed_processes) / edf_n) if edf_n > 0 else 0,
                 'avg_waiting': (sum(p.wait_time for p in sim_edf.completed_processes) / edf_n) if edf_n > 0 else 0,
-                'cpu_utilization': (sum(end - start for pid, start, end in sim_edf.gantt_chart) / sim_edf.current_time) * 100 if sim_edf.current_time > 0 else 0
+                'cpu_utilization': (sum(end - start for pid, start, end in sim_edf.gantt_chart) / sim_edf.current_time) * 100 if sim_edf.current_time > 0 else 0,
+                'context_switches': sim_edf.context_switches
             }
                 
             visualizer.visualize_algorithm_complete(sim_edf.gantt_chart, sim_edf.completed_processes, "EDF")
@@ -282,19 +290,19 @@ def run_simulations_with_visualization():
         
         # Summary statistics
         print("\n📊 Algorithm Performance Summary:")
-        print("-" * 70)
-        print(f"{'Algorithm':<20} {'Avg Turnaround':>15} {'Avg Waiting':>15} {'CPU Util':>15}")
-        print("-" * 70)
+        print("-" * 90)
+        print(f"{'Algorithm':<20} {'Avg Turnaround':>15} {'Avg Waiting':>15} {'CPU Util':>12} {'Context SW':>12}")
+        print("-" * 90)
         for alg, stats in comparison_results.items():
-            print(f"{alg:<20} {stats['avg_turnaround']:>14.2f}ms {stats['avg_waiting']:>14.2f}ms {stats['cpu_utilization']:>14.2f}%")
+            print(f"{alg:<20} {stats['avg_turnaround']:>14.2f}ms {stats['avg_waiting']:>14.2f}ms {stats['cpu_utilization']:>11.2f}% {stats['context_switches']:>12}")
         
         if realtime_results:
             print("\n📊 Realtime Scheduling Summary:")
-            print("-" * 70)
-            print(f"{'Algorithm':<20} {'Deadline Misses':>20} {'Avg Turnaround':>15}")
-            print("-" * 70)
+            print("-" * 80)
+            print(f"{'Algorithm':<20} {'Deadline Misses':>18} {'Avg Turnaround':>15} {'Context SW':>12}")
+            print("-" * 80)
             for alg, stats in realtime_results.items():
-                print(f"{alg:<20} {stats['deadline_misses']:>20} {stats['avg_turnaround']:>14.2f}ms")
+                print(f"{alg:<20} {stats['deadline_misses']:>18} {stats['avg_turnaround']:>14.2f}ms {stats['context_switches']:>12}")
         
         print("\n" + "=" * 70)
 

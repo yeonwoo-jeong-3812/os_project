@@ -23,7 +23,11 @@ class SimulatorSJF: #  클래스 이름 변경 (SRTF)
         self.completed_processes = []
         self.gantt_chart = []
         self.total_cpu_idle_time = 0
-        self.last_cpu_busy_time = 0 
+        self.last_cpu_busy_time = 0
+        
+        # [문맥 전환 횟수 추가]
+        self.context_switches = 0
+        self.cpu_was_idle = True 
 
     # simulator_sjf.py의 run() 메소드 (덮어쓸 내용)
 
@@ -90,12 +94,17 @@ class SimulatorSJF: #  클래스 이름 변경 (SRTF)
                     
                     self.running_process.state = Process.RUNNING
                     
+                    if not self.cpu_was_idle:
+                        self.context_switches += 1
+                    self.cpu_was_idle = False
+                    
                     wait = self.current_time - self.running_process.last_ready_time
                     self.running_process.wait_time += wait
                     
                     print(f"[Time {self.current_time:3d}] 프로세스 {self.running_process.pid} 실행 시작 (남은 시간: {remaining_time}ms, 대기: {wait}ms, 총 대기: {self.running_process.wait_time}ms)")
                 
                 else:
+                    self.cpu_was_idle = True
                     pass 
 
             # --- 3-2. CPU 실행 ---
@@ -286,6 +295,7 @@ class SimulatorSJF: #  클래스 이름 변경 (SRTF)
         print(f"CPU 총 유휴 시간      : {self.total_cpu_idle_time}")
         print(f"CPU 총 사용 시간      : {total_busy_time}")
         print(f"CPU 사용률 (Util)   : {cpu_utilization:.2f} %")
+        print(f"총 문맥 전환 횟수     : {self.context_switches}")
 
         print("\n--- 간트 차트 (Gantt Chart) ---")
         print("PID | 시작 -> 종료")

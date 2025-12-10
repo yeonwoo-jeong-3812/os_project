@@ -31,7 +31,11 @@ class SimulatorEDF:
         self.gantt_chart = []
         self.total_cpu_idle_time = 0
         self.last_cpu_busy_time = 0 
-        self.deadline_misses = 0
+        
+        # [문맥 전환 횟수 추가]
+        self.context_switches = 0
+        self.cpu_was_idle = True
+self.deadline_misses = 0
 
     def run(self):
         print(f"\n--- 실시간 EDF 시뮬레이션 시작 ---")
@@ -101,12 +105,17 @@ class SimulatorEDF:
                     cmd_prio, deadline, pid, self.running_process = heapq.heappop(self.ready_queue)
                     
                     self.running_process.state = Process.RUNNING
+                    
+                    if not self.cpu_was_idle:
+                        self.context_switches += 1
+                    self.cpu_was_idle = False
                     wait = self.current_time - self.running_process.last_ready_time
                     self.running_process.wait_time += wait
                     
                     print(f"[Time {self.current_time:3d}] 프로세스 {self.running_process.pid} 선택됨 (마감: {deadline}, 대기: {wait}ms)")
                 
                 else:
+                    self.cpu_was_idle = True
                     pass 
 
             # --- 3-2. CPU 실행 ---
@@ -297,6 +306,7 @@ class SimulatorEDF:
         print(f"CPU 총 유휴 시간      : {self.total_cpu_idle_time}")
         print(f"CPU 총 사용 시간      : {total_busy_time}")
         print(f"CPU 사용률 (Util)   : {cpu_utilization:.2f} %")
+        print(f"총 문맥 전환 횟수     : {self.context_switches}")
         print(f"마감시한 초과 횟수    : {self.deadline_misses}")
 
         print("\n--- 간트 차트 (Gantt Chart) ---")

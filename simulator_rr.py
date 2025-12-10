@@ -21,9 +21,13 @@ class SimulatorRR: # 👈 클래스 이름 변경
         self.total_cpu_idle_time = 0
         self.last_cpu_busy_time = 0 
         
-        # --- 💡 RR 수정/추가 부분 ---
-        self.time_quantum = time_quantum # 타임 슬라이스 (기본값 4)
-        self.current_time_slice = 0 # 현재 프로세스가 사용한 시간
+        # --- RR 수정/추가 부분 ---
+        self.time_quantum = time_quantum # (4)
+        self.current_time_slice = 0 # 
+
+        # [문맥 전환 횟수 추가]
+        self.context_switches = 0
+        self.cpu_was_idle = True
 
    # simulator_rr.py의 run() 메소드 (덮어쓸 내용)
 
@@ -57,6 +61,10 @@ class SimulatorRR: # 👈 클래스 이름 변경
                     self.running_process = self.ready_queue.popleft() 
                     self.running_process.state = Process.RUNNING
                     
+                    if not self.cpu_was_idle:
+                        self.context_switches += 1
+                    self.cpu_was_idle = False
+                    
                     wait = self.current_time - self.running_process.last_ready_time
                     self.running_process.wait_time += wait
                     
@@ -65,6 +73,7 @@ class SimulatorRR: # 👈 클래스 이름 변경
                     print(f"[Time {self.current_time:3d}] 프로세스 {self.running_process.pid} 선택됨 (대기: {wait}ms, 총 대기: {self.running_process.wait_time}ms)")
                 
                 else:
+                    self.cpu_was_idle = True
                     pass 
 
             # --- 3-2. 실행 로직 ---
@@ -229,6 +238,7 @@ class SimulatorRR: # 👈 클래스 이름 변경
         print(f"CPU 총 유휴 시간      : {self.total_cpu_idle_time}")
         print(f"CPU 총 사용 시간      : {total_busy_time}")
         print(f"CPU 사용률 (Util)   : {cpu_utilization:.2f} %")
+        print(f"총 문맥 전환 횟수     : {self.context_switches}")
 
         print("\n--- 간트 차트 (Gantt Chart) ---")
         print("PID | 시작 -> 종료")
