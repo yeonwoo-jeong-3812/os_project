@@ -3,11 +3,11 @@ import heapq  # I/O 대기 큐(우선순위 큐)를 위해 import
 from process import Process, parse_input_file
 from sync import get_resource
 
-class SimulatorRR: # 👈 클래스 이름 변경
+class SimulatorRR: # 
     """
     Round Robin (RR) 스케줄링 알고리즘을 위한 시뮬레이터 클래스
     """
-    def __init__(self, process_list, time_quantum=4): # 👈 time_quantum 파라미터 추가
+    def __init__(self, process_list, time_quantum=4, context_switch_overhead=1):
         # (processes_to_arrive, ready_queue, waiting_queue 등은 FCFS와 동일)
         self.processes_to_arrive = []
         for proc in process_list:
@@ -25,11 +25,15 @@ class SimulatorRR: # 👈 클래스 이름 변경
         self.time_quantum = time_quantum # (4)
         self.current_time_slice = 0 # 
 
-        # [문맥 전환 횟수 추가]
+        # [문맥 전환 횟수 및 오버헤드 추가]
         self.context_switches = 0
+        self.context_switch_overhead = context_switch_overhead
+        self.total_overhead_time = 0
         self.cpu_was_idle = True
-
-   # simulator_rr.py의 run() 메소드 (덮어쓸 내용)
+        self.overhead_remaining = 0
+        
+        # [큐 상태 로깅]
+        self.queue_log = []
 
     def run(self):
         """
@@ -56,13 +60,17 @@ class SimulatorRR: # 👈 클래스 이름 변경
                 print(f"[Time {self.current_time:3d}] 프로세스 {pid} I/O 완료 (Ready 큐 진입)")
 
             # --- 3. CPU 작업 처리 (Dispatcher) ---
-            if not self.running_process:
+            if not self.running_process and self.overhead_remaining == 0:
                 if self.ready_queue:
                     self.running_process = self.ready_queue.popleft() 
                     self.running_process.state = Process.RUNNING
                     
+                    # 문맥 교환 오버헤드 적용
                     if not self.cpu_was_idle:
                         self.context_switches += 1
+                        self.overhead_remaining = self.context_switch_overhead
+                        self.total_overhead_time += self.context_switch_overhead
+                        print(f"[Time {self.current_time:3d}] 문맥 교환 발생 (오버헤드: {self.context_switch_overhead}ms)")
                     self.cpu_was_idle = False
                     
                     wait = self.current_time - self.running_process.last_ready_time
@@ -75,6 +83,12 @@ class SimulatorRR: # 👈 클래스 이름 변경
                 else:
                     self.cpu_was_idle = True
                     pass 
+
+            # --- 3-1. 오버헤드 처리 ---
+            if self.overhead_remaining > 0:
+                self.overhead_remaining -= 1
+                self.current_time += 1
+                continue
 
             # --- 3-2. 실행 로직 ---
             if self.running_process:
@@ -177,6 +191,11 @@ class SimulatorRR: # 👈 클래스 이름 변경
 
                         proc.advance_to_next_burst()
             
+            # --- 4. 큐 상태 로깅 ---
+            ready_pids = [p.pid for p in self.ready_queue]
+            waiting_pids = [item[1] for item in self.waiting_queue]
+            self.queue_log.append((self.current_time, ready_pids.copy(), waiting_pids.copy()))
+            
             # --- 5. 시간 증가 ---
             self.current_time += 1
         
@@ -205,15 +224,13 @@ class SimulatorRR: # 👈 클래스 이름 변경
     def print_results(self, total_time, total_busy_time):
         """
         최종 통계 결과를 출력합니다.
-        (RR용으로 제목만 수정)
         """
-        print(f"\n--- 📊 RR (Q={self.time_quantum}) 최종 결과 ---") # 👈 이름 변경
+        print(f"\n--- 📊 RR (Q={self.time_quantum}) 최종 결과 ---")
         
         if not self.completed_processes:
             print("오류: 완료된 프로세스가 없습니다.")
             return
 
-        # PID 순서대로 정렬하여 출력
         self.completed_processes.sort(key=lambda x: x.pid)
         
         total_tt = 0
@@ -229,7 +246,9 @@ class SimulatorRR: # 👈 클래스 이름 변경
         avg_tt = total_tt / n
         avg_wt = total_wt / n
         
+        effective_cpu_time = total_busy_time - self.total_overhead_time
         cpu_utilization = (total_busy_time / total_time) * 100 if total_time > 0 else 0
+        effective_cpu_utilization = (effective_cpu_time / total_time) * 100 if total_time > 0 else 0
         
         print("\n--- 요약 ---")
         print(f"평균 반환 시간 (Avg TT) : {avg_tt:.2f}")
@@ -237,8 +256,10 @@ class SimulatorRR: # 👈 클래스 이름 변경
         print(f"총 실행 시간          : {total_time}")
         print(f"CPU 총 유휴 시간      : {self.total_cpu_idle_time}")
         print(f"CPU 총 사용 시간      : {total_busy_time}")
-        print(f"CPU 사용률 (Util)   : {cpu_utilization:.2f} %")
-        print(f"총 문맥 전환 횟수     : {self.context_switches}")
+        print(f"문맥 교환 횟수        : {self.context_switches}")
+        print(f"문맥 교환 오버헤드    : {self.total_overhead_time}ms")
+        print(f"CPU 사용률 (명목)     : {cpu_utilization:.2f} %")
+        print(f"CPU 사용률 (유효)     : {effective_cpu_utilization:.2f} %")
 
         print("\n--- 간트 차트 (Gantt Chart) ---")
         print("PID | 시작 -> 종료")

@@ -12,7 +12,7 @@ class SimulatorMLFQ:
     - Q3: FCFS
     """
     # 👇👇👇 2. __init__ 메소드도 3개의 큐가 있는지 확인!
-    def __init__(self, process_list):
+    def __init__(self, process_list, context_switch_overhead=1):
         self.processes_to_arrive = []
         for proc in process_list:
             heapq.heappush(self.processes_to_arrive, (proc.arrival_time, proc.pid, proc))
@@ -31,11 +31,19 @@ class SimulatorMLFQ:
         self.total_cpu_idle_time = 0
         self.last_cpu_busy_time = 0 
         
-        
         # [문맥 전환 횟수 추가]
         self.context_switches = 0
+        self.context_switch_overhead = context_switch_overhead
+        self.total_overhead_time = 0
         self.cpu_was_idle = True
-self.current_process_level = 0
+        self.overhead_remaining = 0
+        
+        # [큐 상태 로깅]
+        self.queue_log = []
+        
+        self.time_quantum_q1 = 8
+        self.time_quantum_q2 = 16
+        self.current_process_level = 0
         self.current_quantum = 0
         self.current_time_slice = 0
 
@@ -89,7 +97,7 @@ self.current_process_level = 0
                     self.current_time_slice = 0
 
             # --- 4. Dispatcher ---
-            if not self.running_process:
+            if not self.running_process and self.overhead_remaining == 0:
                 if self.ready_queue_q1:
                     self.running_process = self.ready_queue_q1.popleft()
                     self.current_process_level = 1
@@ -106,15 +114,25 @@ self.current_process_level = 0
                 if self.running_process:
                     proc = self.running_process
                     proc.state = Process.RUNNING
-                        
-                        if not self.cpu_was_idle:
-                            self.context_switches += 1
-                        self.cpu_was_idle = False
+                    
+                    # 문맥 교환 오버헤드 적용
+                    if not self.cpu_was_idle:
+                        self.context_switches += 1
+                        self.overhead_remaining = self.context_switch_overhead
+                        self.total_overhead_time += self.context_switch_overhead
+                        print(f"[Time {self.current_time:3d}] 문맥 교환 발생 (오버헤드: {self.context_switch_overhead}ms)")
+                    self.cpu_was_idle = False
                     wait = self.current_time - proc.last_ready_time
                     proc.wait_time += wait
                     self.current_time_slice = 0 # 퀀텀 리셋
                     
                     print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid} (Q{self.current_process_level}) 선택됨 (대기: {wait}ms)")
+
+            # --- 4-1. 오버헤드 처리 ---
+            if self.overhead_remaining > 0:
+                self.overhead_remaining -= 1
+                self.current_time += 1
+                continue
 
             # --- 5. 실행 로직 ---
             # [ 3. 수정된 부분 (RR과 동일한 로직) ]
@@ -239,6 +257,14 @@ self.current_process_level = 0
 
                         proc.advance_to_next_burst()
 
+            # --- 6. 큐 상태 로깅 ---
+            ready_q1_pids = [p.pid for p in self.ready_queue_q1]
+            ready_q2_pids = [p.pid for p in self.ready_queue_q2]
+            ready_q3_pids = [p.pid for p in self.ready_queue_q3]
+            ready_pids = ready_q1_pids + ready_q2_pids + ready_q3_pids  # 모든 큐 합침
+            waiting_pids = [item[1] for item in self.waiting_queue]
+            self.queue_log.append((self.current_time, ready_pids.copy(), waiting_pids.copy()))
+            
             self.current_time += 1
         
         total_simulation_time = self.current_time
@@ -282,7 +308,9 @@ self.current_process_level = 0
         avg_tt = total_tt / n
         avg_wt = total_wt / n
         
+        effective_cpu_time = total_busy_time - self.total_overhead_time
         cpu_utilization = (total_busy_time / total_time) * 100 if total_time > 0 else 0
+        effective_cpu_utilization = (effective_cpu_time / total_time) * 100 if total_time > 0 else 0
         
         print("\n--- 요약 ---")
         print(f"평균 반환 시간 (Avg TT) : {avg_tt:.2f}")
@@ -290,8 +318,10 @@ self.current_process_level = 0
         print(f"총 실행 시간          : {total_time}")
         print(f"CPU 총 유휴 시간      : {self.total_cpu_idle_time}")
         print(f"CPU 총 사용 시간      : {total_busy_time}")
-        print(f"CPU 사용률 (Util)   : {cpu_utilization:.2f} %")
-        print(f"총 문맥 전환 횟수     : {self.context_switches}")
+        print(f"문맥 교환 횟수        : {self.context_switches}")
+        print(f"문맥 교환 오버헤드    : {self.total_overhead_time}ms")
+        print(f"CPU 사용률 (명목)     : {cpu_utilization:.2f} %")
+        print(f"CPU 사용률 (유효)     : {effective_cpu_utilization:.2f} %")
 
         print("\n--- 간트 차트 (Gantt Chart) ---")
         print("PID | 시작 -> 종료")

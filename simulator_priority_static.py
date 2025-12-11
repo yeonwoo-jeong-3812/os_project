@@ -7,7 +7,7 @@ class SimulatorPriorityStatic: # 👈 1. 클래스 이름 변경
     """
     선점형 정적 우선순위(Preemptive Priority) 시뮬레이터
     """
-    def __init__(self, process_list):
+    def __init__(self, process_list, context_switch_overhead=1):
         self.processes_to_arrive = []
         for proc in process_list:
             heapq.heappush(self.processes_to_arrive, (proc.arrival_time, proc.pid, proc))
@@ -25,13 +25,20 @@ class SimulatorPriorityStatic: # 👈 1. 클래스 이름 변경
         self.last_cpu_busy_time = 0 
 
     
-        # [문맥 전환 횟수 추가]
+        # [ ]
         self.context_switches = 0
+        self.context_switch_overhead = context_switch_overhead
+        self.total_overhead_time = 0
         self.cpu_was_idle = True
-def run(self):
-        print(f"\n--- 정적 우선순위 시뮬레이션 시작 ---") 
+        self.overhead_remaining = 0
+        
+        # [ ]
+        self.queue_log = []
 
-        # [우선순위 헬퍼 함수]
+    def run(self):
+        print(f"\n---  ---") 
+
+        # [ ]
         def get_priority_key(proc):
             """
             프로세스의 현재 동적 우선순위 튜플을 반환합니다.
@@ -288,6 +295,11 @@ def run(self):
                     self.running_process = None
                     # --- 👆 [ 수정 끝 ] ---
 
+            # --- 4. 큐 상태 로깅 ---
+            ready_pids = [item[1].pid for item in self.ready_queue]  # (priority_tuple, proc)
+            waiting_pids = [item[1] for item in self.waiting_queue]  # (time, pid, proc)
+            self.queue_log.append((self.current_time, ready_pids.copy(), waiting_pids.copy()))
+
             self.current_time += 1
         
         # --- 시뮬레이션 종료 처리 ---
@@ -315,8 +327,8 @@ def run(self):
         """
         최종 통계 결과를 출력합니다. (정적 우선순위)
         """
-        print(f"\n--- 📊 정적 우선순위 최종 결과 ---") # 👈 6. 로그 변경
-        
+        print(f"\n--- 📊 정적 우선순위 최종 결과 ---")
+
         if not self.completed_processes:
             print("오류: 완료된 프로세스가 없습니다.")
             return
@@ -336,7 +348,9 @@ def run(self):
         avg_tt = total_tt / n
         avg_wt = total_wt / n
         
+        effective_cpu_time = total_busy_time - self.total_overhead_time
         cpu_utilization = (total_busy_time / total_time) * 100 if total_time > 0 else 0
+        effective_cpu_utilization = (effective_cpu_time / total_time) * 100 if total_time > 0 else 0
         
         print("\n--- 요약 ---")
         print(f"평균 반환 시간 (Avg TT) : {avg_tt:.2f}")
@@ -344,8 +358,10 @@ def run(self):
         print(f"총 실행 시간          : {total_time}")
         print(f"CPU 총 유휴 시간      : {self.total_cpu_idle_time}")
         print(f"CPU 총 사용 시간      : {total_busy_time}")
-        print(f"CPU 사용률 (Util)   : {cpu_utilization:.2f} %")
-        print(f"총 문맥 전환 횟수     : {self.context_switches}")
+        print(f"문맥 교환 횟수        : {self.context_switches}")
+        print(f"문맥 교환 오버헤드    : {self.total_overhead_time}ms")
+        print(f"CPU 사용률 (명목)     : {cpu_utilization:.2f} %")
+        print(f"CPU 사용률 (유효)     : {effective_cpu_utilization:.2f} %")
 
         print("\n--- 간트 차트 (Gantt Chart) ---")
         print("PID | 시작 -> 종료")

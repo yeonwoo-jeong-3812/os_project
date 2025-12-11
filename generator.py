@@ -1,50 +1,117 @@
 import random
+import numpy as np
 from process import Process # process.py의 Process 클래스를 가져옵니다.
 
 def generate_random_processes(
-    num_processes=10, 
-    max_arrival_time=50, 
-    max_cpu_burst=20, 
-    max_io_burst=30, 
-    max_priority=5, 
-    io_probability=0.7
+    num_processes=10,
+    arrival_lambda=5.0,  # 지수 분포의 람다 값 (평균 도착 간격)
+    max_cpu_burst=20,
+    max_io_burst=30,
+    max_priority=5,
+    workload_distribution=None
     ):
     """
-    (수정됨) "CPU:X, IO:Y" 형식의 랜덤 프로세스 리스트를 생성합니다.
-    (비-실시간 알고리즘 테스트용)
+    [고도화 버전] 워크로드 타입을 구분하여 현실적인 프로세스를 생성합니다.
+    
+    Args:
+        num_processes: 생성할 프로세스 개수
+        arrival_lambda: 지수 분포 람다 값 (값이 클수록 도착 간격이 짧음)
+        max_cpu_burst: 최대 CPU 버스트 시간
+        max_io_burst: 최대 I/O 버스트 시간
+        max_priority: 최대 우선순위 값
+        workload_distribution: 워크로드 타입 비율 {'cpu_bound': 0.3, 'io_bound': 0.4, 'mixed': 0.3}
+    
+    워크로드 타입:
+        - CPU Bound: 긴 CPU 버스트, 적은 I/O (연산 집약적)
+        - I/O Bound: 짧은 CPU 버스트, 잦은 I/O (입출력 집약적)
+        - Mixed: 중간 형태
     """
+    if workload_distribution is None:
+        workload_distribution = {'cpu_bound': 0.3, 'io_bound': 0.4, 'mixed': 0.3}
+    
     processes = []
-    print(f"--- 랜덤 프로세스 {num_processes}개 생성 시작 ---")
+    print(f"--- 랜덤 프로세스 {num_processes}개 생성 시작 (고도화 버전) ---")
+    print(f"워크로드 분포: CPU Bound {workload_distribution['cpu_bound']*100:.0f}%, "
+          f"I/O Bound {workload_distribution['io_bound']*100:.0f}%, "
+          f"Mixed {workload_distribution['mixed']*100:.0f}%")
+    
+    # 워크로드 타입 리스트 생성
+    workload_types = []
+    workload_types.extend(['cpu_bound'] * int(num_processes * workload_distribution['cpu_bound']))
+    workload_types.extend(['io_bound'] * int(num_processes * workload_distribution['io_bound']))
+    workload_types.extend(['mixed'] * int(num_processes * workload_distribution['mixed']))
+    
+    # 부족한 개수는 mixed로 채움
+    while len(workload_types) < num_processes:
+        workload_types.append('mixed')
+    
+    # 랜덤 섞기
+    random.shuffle(workload_types)
+    
+    # 지수 분포로 도착 시간 생성
+    arrival_times = [0]  # 첫 프로세스는 시간 0에 도착
+    for i in range(1, num_processes):
+        # 지수 분포로 도착 간격 생성
+        interval = np.random.exponential(1.0 / arrival_lambda)
+        arrival_times.append(int(arrival_times[-1] + interval))
     
     for i in range(num_processes):
         pid = i + 1
-        arrival_time = random.randint(0, max_arrival_time)
+        arrival_time = arrival_times[i]
         priority = random.randint(1, max_priority)
+        workload_type = workload_types[i]
         
         burst_list_str = []
         
-        # 1. 첫 번째 CPU 버스트
-        cpu_burst = random.randint(1, max_cpu_burst)
-        burst_list_str.append(f"CPU:{cpu_burst}")
-        
-        # 2. I/O Bound 프로세스를 위한 추가 버스트 생성
-        while random.random() < io_probability:
-            io_burst = random.randint(1, max_io_burst)
-            cpu_burst = random.randint(1, max_cpu_burst)
-            
-            burst_list_str.append(f"IO:{io_burst}")
+        # 워크로드 타입에 따른 버스트 패턴 생성
+        if workload_type == 'cpu_bound':
+            # CPU Bound: 긴 CPU 버스트, 적은 I/O
+            cpu_burst = random.randint(max_cpu_burst // 2, max_cpu_burst)
             burst_list_str.append(f"CPU:{cpu_burst}")
             
-            if len(burst_list_str) > 10: # 최대 5쌍
-                break
-                
+            # 10% 확률로 I/O 추가 (최대 1~2회)
+            for _ in range(random.randint(0, 2)):
+                if random.random() < 0.1:
+                    io_burst = random.randint(1, max_io_burst // 3)
+                    cpu_burst = random.randint(max_cpu_burst // 2, max_cpu_burst)
+                    burst_list_str.append(f"IO:{io_burst}")
+                    burst_list_str.append(f"CPU:{cpu_burst}")
+        
+        elif workload_type == 'io_bound':
+            # I/O Bound: 짧은 CPU 버스트, 잦은 I/O
+            cpu_burst = random.randint(1, max_cpu_burst // 3)
+            burst_list_str.append(f"CPU:{cpu_burst}")
+            
+            # 80% 확률로 I/O 추가 (최대 3~5회)
+            for _ in range(random.randint(3, 5)):
+                if random.random() < 0.8:
+                    io_burst = random.randint(max_io_burst // 2, max_io_burst)
+                    cpu_burst = random.randint(1, max_cpu_burst // 3)
+                    burst_list_str.append(f"IO:{io_burst}")
+                    burst_list_str.append(f"CPU:{cpu_burst}")
+        
+        else:  # mixed
+            # Mixed: 중간 형태
+            cpu_burst = random.randint(max_cpu_burst // 4, max_cpu_burst // 2)
+            burst_list_str.append(f"CPU:{cpu_burst}")
+            
+            # 50% 확률로 I/O 추가 (최대 2~3회)
+            for _ in range(random.randint(2, 3)):
+                if random.random() < 0.5:
+                    io_burst = random.randint(max_io_burst // 3, max_io_burst // 2)
+                    cpu_burst = random.randint(max_cpu_burst // 4, max_cpu_burst // 2)
+                    burst_list_str.append(f"IO:{io_burst}")
+                    burst_list_str.append(f"CPU:{cpu_burst}")
+        
         # "CPU:3,IO:10,CPU:4" 형태의 문자열로 변환
         burst_pattern_str = ",".join(burst_list_str)
         
         proc = Process(pid, arrival_time, priority, burst_pattern_str, 0, 0)
         processes.append(proc)
         
-        print(f"  P{pid}: 도착={arrival_time}, 우선순위={priority}, 패턴=\"{burst_pattern_str}\"")
+        # 워크로드 타입 표시
+        type_label = {'cpu_bound': 'CPU집약', 'io_bound': 'I/O집약', 'mixed': '혼합형'}[workload_type]
+        print(f"  P{pid}: 도착={arrival_time:3d}, 우선순위={priority}, 타입=[{type_label}], 패턴=\"{burst_pattern_str}\"")
 
     print("--- 랜덤 프로세스 생성 완료 ---")
     return processes
@@ -111,12 +178,24 @@ def generate_random_realtime_processes(
 if __name__ == "__main__":
     """
     'python generator.py'를 실행하면 
-    랜덤 프로세스 7개를 생성하여 'random_input.txt' 파일로 저장합니다.
+    랜덤 프로세스를 생성하여 'random_input.txt' 파일로 저장합니다.
     """
+    print("\n=== 고도화된 워크로드 생성기 테스트 ===")
+    
     test_processes = generate_random_processes(
-        num_processes=7, 
-        max_arrival_time=20, 
-        io_probability=0.5 # 50% 확률로 I/O 추가
+        num_processes=10,
+        arrival_lambda=3.0,  # 평균 3ms 간격으로 도착
+        max_cpu_burst=20,
+        max_io_burst=30,
+        workload_distribution={'cpu_bound': 0.3, 'io_bound': 0.4, 'mixed': 0.3}
     )
     
     save_processes_to_file(test_processes, "random_input.txt")
+    
+    # 통계 출력
+    print("\n=== 생성된 워크로드 통계 ===")
+    total_cpu = sum(sum(val for cmd, val in p.burst_pattern if cmd == 'CPU') for p in test_processes)
+    total_io = sum(sum(val for cmd, val in p.burst_pattern if cmd == 'IO') for p in test_processes)
+    print(f"총 CPU 버스트 시간: {total_cpu}ms")
+    print(f"총 I/O 버스트 시간: {total_io}ms")
+    print(f"CPU/IO 비율: {total_cpu/(total_io+1):.2f}")

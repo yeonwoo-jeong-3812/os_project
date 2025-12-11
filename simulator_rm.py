@@ -9,14 +9,14 @@ class SimulatorRM: # 👈 1. 클래스 이름 변경
     - 실시간 프로세스(P5, P6)만 스케줄링합니다.
     - 우선순위 = Period (주기)
     """
-    def __init__(self, process_list):
+    def __init__(self, process_list, context_switch_overhead=1):
         self.processes_to_arrive = []
         
-        # --- 💡 2. 실시간 프로세스만 필터링 ---
+        # --- 2. 실시간 프로세스만 필터링 ---
         rt_processes = [p for p in process_list if p.period > 0]
         
         for proc in rt_processes:
-            # --- 💡 3. 우선순위를 'Period'로 설정 ---
+            # --- 3. 우선순위를 'Period'로 설정 ---
             proc.static_priority = proc.period 
             
             heapq.heappush(self.processes_to_arrive, (proc.arrival_time, proc.pid, proc))
@@ -32,11 +32,17 @@ class SimulatorRM: # 👈 1. 클래스 이름 변경
         self.total_cpu_idle_time = 0
         self.last_cpu_busy_time = 0 
         
-        
         # [문맥 전환 횟수 추가]
         self.context_switches = 0
+        self.context_switch_overhead = context_switch_overhead
+        self.total_overhead_time = 0
         self.cpu_was_idle = True
-# --- 💡 4. 실시간 통계 ---
+        self.overhead_remaining = 0
+        
+        # [큐 상태 로깅]
+        self.queue_log = []
+        
+        # --- 4. 실시간 통계 ---
         self.deadline_misses = 0
 
     def run(self):
@@ -269,6 +275,11 @@ class SimulatorRM: # 👈 1. 클래스 이름 변경
                             heapq.heappush(self.ready_queue, (0, proc.static_priority, proc.pid, proc))
                     self.running_process = None
             
+            # --- 4. 큐 상태 로깅 ---
+            ready_pids = [item[2] for item in self.ready_queue]  # (cmd_prio, priority, pid, proc)
+            waiting_pids = [item[1] for item in self.waiting_queue]  # (time, pid, proc)
+            self.queue_log.append((self.current_time, ready_pids.copy(), waiting_pids.copy()))
+            
             self.current_time += 1
         
         # --- 시뮬레이션 종료 처리 ---
@@ -308,7 +319,9 @@ class SimulatorRM: # 👈 1. 클래스 이름 변경
         avg_tt = total_tt / n if n > 0 else 0
         avg_wt = total_wt / n if n > 0 else 0
         
+        effective_cpu_time = total_busy_time - self.total_overhead_time
         cpu_utilization = (total_busy_time / total_time) * 100 if total_time > 0 else 0
+        effective_cpu_utilization = (effective_cpu_time / total_time) * 100 if total_time > 0 else 0
         
         print("\n--- 요약 ---")
         print(f"평균 반환 시간 (Avg TT) : {avg_tt:.2f}")
@@ -316,8 +329,10 @@ class SimulatorRM: # 👈 1. 클래스 이름 변경
         print(f"총 실행 시간          : {total_time}")
         print(f"CPU 총 유휴 시간      : {self.total_cpu_idle_time}")
         print(f"CPU 총 사용 시간      : {total_busy_time}")
-        print(f"CPU 사용률 (Util)   : {cpu_utilization:.2f} %")
-        print(f"총 문맥 전환 횟수     : {self.context_switches}")
+        print(f"문맥 교환 횟수        : {self.context_switches}")
+        print(f"문맥 교환 오버헤드    : {self.total_overhead_time}ms")
+        print(f"CPU 사용률 (명목)     : {cpu_utilization:.2f} %")
+        print(f"CPU 사용률 (유효)     : {effective_cpu_utilization:.2f} %")
         print(f"마감시한 초과 횟수    : {self.deadline_misses}") # 👈 RM 통계 추가
 
         print("\n--- 간트 차트 (Gantt Chart) ---")

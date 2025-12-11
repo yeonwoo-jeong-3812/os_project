@@ -9,7 +9,7 @@ class SimulatorEDF:
     - 실시간 프로세스(P5, P6)만 스케줄링합니다.
     - 우선순위 = 절대 마감시한 (Deadline)
     """
-    def __init__(self, process_list):
+    def __init__(self, process_list, context_switch_overhead=1):
         self.processes_to_arrive = []
         
         # --- 실시간 프로세스만 필터링 ---
@@ -34,8 +34,15 @@ class SimulatorEDF:
         
         # [문맥 전환 횟수 추가]
         self.context_switches = 0
+        self.context_switch_overhead = context_switch_overhead
+        self.total_overhead_time = 0
         self.cpu_was_idle = True
-self.deadline_misses = 0
+        self.overhead_remaining = 0
+        
+        # [큐 상태 로깅]
+        self.queue_log = []
+        
+        self.deadline_misses = 0
 
     def run(self):
         print(f"\n--- 실시간 EDF 시뮬레이션 시작 ---")
@@ -259,9 +266,14 @@ self.deadline_misses = 0
                             heapq.heappush(self.ready_queue, (0, proc.absolute_deadline, proc.pid, proc))
                     self.running_process = None
             
+            # --- 4. 
+            ready_pids = [item[2] for item in self.ready_queue]  # (cmd_prio, deadline, pid, proc)
+            waiting_pids = [item[1] for item in self.waiting_queue]  # (time, pid, proc)
+            self.queue_log.append((self.current_time, ready_pids.copy(), waiting_pids.copy()))
+            
             self.current_time += 1
         
-        # --- 시뮬레이션 종료 처리 ---
+        # --- 
         total_simulation_time = self.current_time
         total_cpu_busy_time = 0
         idle_time_start = 0
@@ -297,7 +309,9 @@ self.deadline_misses = 0
         avg_tt = total_tt / n if n > 0 else 0
         avg_wt = total_wt / n if n > 0 else 0
         
+        effective_cpu_time = total_busy_time - self.total_overhead_time
         cpu_utilization = (total_busy_time / total_time) * 100 if total_time > 0 else 0
+        effective_cpu_utilization = (effective_cpu_time / total_time) * 100 if total_time > 0 else 0
         
         print("\n--- 요약 ---")
         print(f"평균 반환 시간 (Avg TT) : {avg_tt:.2f}")
@@ -305,8 +319,10 @@ self.deadline_misses = 0
         print(f"총 실행 시간          : {total_time}")
         print(f"CPU 총 유휴 시간      : {self.total_cpu_idle_time}")
         print(f"CPU 총 사용 시간      : {total_busy_time}")
-        print(f"CPU 사용률 (Util)   : {cpu_utilization:.2f} %")
-        print(f"총 문맥 전환 횟수     : {self.context_switches}")
+        print(f"문맥 교환 횟수        : {self.context_switches}")
+        print(f"문맥 교환 오버헤드    : {self.total_overhead_time}ms")
+        print(f"CPU 사용률 (명목)     : {cpu_utilization:.2f} %")
+        print(f"CPU 사용률 (유효)     : {effective_cpu_utilization:.2f} %")
         print(f"마감시한 초과 횟수    : {self.deadline_misses}")
 
         print("\n--- 간트 차트 (Gantt Chart) ---")

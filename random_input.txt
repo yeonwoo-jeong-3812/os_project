@@ -1,0 +1,13 @@
+# OS Scheduler Project - Randomly Generated Input Data
+# 형식: PID,생성시간,우선순위,실행패턴,[주기,마감시한]
+# --------------------------------------------------
+1,0,2,"CPU:5,IO:27,CPU:1,IO:20,CPU:3,IO:25,CPU:1",0,0
+2,1,5,"CPU:18",0,0
+3,1,5,"CPU:6,IO:14,CPU:6,IO:15,CPU:7",0,0
+4,2,3,"CPU:15",0,0
+5,2,4,"CPU:5,IO:10,CPU:7",0,0
+6,2,5,"CPU:2,IO:21,CPU:5,IO:19,CPU:3,IO:18,CPU:5,IO:22,CPU:6",0,0
+7,2,3,"CPU:4,IO:29,CPU:1,IO:23,CPU:6,IO:24,CPU:3",0,0
+8,2,4,"CPU:12,IO:9,CPU:11",0,0
+9,3,5,"CPU:6,IO:15,CPU:10",0,0
+10,3,5,"CPU:4,IO:16,CPU:4,IO:17,CPU:3,IO:16,CPU:5,IO:30,CPU:3,IO:28,CPU:3",0,0

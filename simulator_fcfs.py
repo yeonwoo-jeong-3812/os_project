@@ -9,7 +9,7 @@ class SimulatorFCFS:
     """
     FCFS 스케줄링 알고리즘을 위한 시뮬레이터 클래스
     """
-    def __init__(self, process_list):
+    def __init__(self, process_list, context_switch_overhead=1):
         self.processes_to_arrive = []
         for proc in process_list:
             heapq.heappush(self.processes_to_arrive, (proc.arrival_time, proc.pid, proc))
@@ -26,9 +26,15 @@ class SimulatorFCFS:
         self.total_cpu_idle_time = 0
         self.last_cpu_busy_time = 0
         
-        # [문맥 전환 횟수 추가]
+        # [문맥 전환 횟수 및 오버헤드 추가]
         self.context_switches = 0
+        self.context_switch_overhead = context_switch_overhead  # 문맥 교환 시 소요 시간 (ms)
+        self.total_overhead_time = 0  # 문맥 교환으로 낭비된 총 시간
         self.cpu_was_idle = True
+        self.overhead_remaining = 0  # 현재 진행 중인 오버헤드 남은 시간
+        
+        # [큐 상태 로깅]
+        self.queue_log = []  # [(time, ready_queue_snapshot, waiting_queue_snapshot)]
 
     def run(self):
         """
@@ -55,14 +61,18 @@ class SimulatorFCFS:
                 print(f"[Time {self.current_time:3d}] 프로세스 {pid} I/O 완료 (Ready 큐 진입)")
 
             # --- 3. CPU 작업 처리 (Dispatcher) ---
-            if not self.running_process:
+            if not self.running_process and self.overhead_remaining == 0:
                 if self.ready_queue:
                     # --- 👇 [ 3. 'popleft()'로 수정 (앞에서 꺼냄) ] ---
                     self.running_process = self.ready_queue.popleft() 
                     self.running_process.state = Process.RUNNING
                     
+                    # 문맥 교환 오버헤드 적용
                     if not self.cpu_was_idle:
                         self.context_switches += 1
+                        self.overhead_remaining = self.context_switch_overhead
+                        self.total_overhead_time += self.context_switch_overhead
+                        print(f"[Time {self.current_time:3d}] 문맥 교환 발생 (오버헤드: {self.context_switch_overhead}ms)")
                     self.cpu_was_idle = False
                     
                     wait = self.current_time - self.running_process.last_ready_time
@@ -74,6 +84,13 @@ class SimulatorFCFS:
                     self.cpu_was_idle = True # CPU 유휴
                     pass 
 
+            # --- 3-1. 오버헤드 처리 ---
+            if self.overhead_remaining > 0:
+                self.overhead_remaining -= 1
+                # 오버헤드 중에는 실제 작업을 하지 않음
+                self.current_time += 1
+                continue
+            
             # --- 3-2. 실행 로직 ---
             if self.running_process:
                 proc = self.running_process
@@ -173,6 +190,11 @@ class SimulatorFCFS:
 
                         proc.advance_to_next_burst()
             
+            # --- 4. 큐 상태 로깅 ---
+            ready_pids = [p.pid for p in self.ready_queue]
+            waiting_pids = [item[1] for item in self.waiting_queue]  # (time, pid, proc)
+            self.queue_log.append((self.current_time, ready_pids.copy(), waiting_pids.copy()))
+            
             # --- 5. 시간 증가 ---
             self.current_time += 1
         
@@ -225,9 +247,12 @@ class SimulatorFCFS:
         avg_tt = total_tt / n
         avg_wt = total_wt / n
         
-        # CPU 사용률 (교수님 공식: (총 시간 - CPU 유휴 시간) / 총 시간)
-        # (total_busy_time / total_time) 과 동일
+        # CPU 사용률 계산 (오버헤드 반영)
+        # 실제 유효 CPU 사용률 = (실제 작업 시간) / (총 시간)
+        # 명목 CPU 사용률 = (실제 작업 시간 + 오버헤드) / (총 시간)
+        effective_cpu_time = total_busy_time - self.total_overhead_time
         cpu_utilization = (total_busy_time / total_time) * 100 if total_time > 0 else 0
+        effective_cpu_utilization = (effective_cpu_time / total_time) * 100 if total_time > 0 else 0
         
         print("\n--- 요약 ---")
         print(f"평균 반환 시간 (Avg TT) : {avg_tt:.2f}")
@@ -235,7 +260,10 @@ class SimulatorFCFS:
         print(f"총 실행 시간          : {total_time}")
         print(f"CPU 총 유휴 시간      : {self.total_cpu_idle_time}")
         print(f"CPU 총 사용 시간      : {total_busy_time}")
-        print(f"CPU 사용률 (Util)   : {cpu_utilization:.2f} %")
+        print(f"문맥 교환 횟수        : {self.context_switches}")
+        print(f"문맥 교환 오버헤드    : {self.total_overhead_time}ms")
+        print(f"CPU 사용률 (명목)     : {cpu_utilization:.2f} %")
+        print(f"CPU 사용률 (유효)     : {effective_cpu_utilization:.2f} %")
 
         print("\n--- 간트 차트 (Gantt Chart) ---")
         # (pid, start, end)
