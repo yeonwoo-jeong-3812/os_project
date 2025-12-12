@@ -17,6 +17,7 @@ import os
 import copy  # 깊은 복사(deep copy)를 위해 추가
 from generator import generate_random_processes, generate_random_realtime_processes # 방금 만든 generator import
 import statistics  # 통계 계산을 위해 추가
+from gui_selector import get_user_selection  # GUI 선택기 import
 
 
 def run_single_simulation(master_process_list_normal, master_process_list_realtime):
@@ -136,50 +137,30 @@ def run_simulations_with_visualization():
     Run all simulations and visualize results (display on screen)
     """
     
-    # --- 1. 모드 선택 프롬프트 ---
-    SIMULATION_MODE = ''
-    while SIMULATION_MODE not in ['1', '2']:
-        print("\n" + "=" * 50)
-        print("          운영체제 스케줄러 시뮬레이션")
-        print("=" * 50)
-        print("모드를 선택하세요:")
-        print("  [1] PERFORMANCE (알고리즘 성능 비교 - 랜덤 생성)")
-        print("  [2] SYNC (동기화/교착상태 테스트 - 파일 입력)")
-        SIMULATION_MODE = input("선택 (1 또는 2): ").strip()
-
-    if SIMULATION_MODE == '1':
-        SIMULATION_MODE = 'PERFORMANCE'
-    elif SIMULATION_MODE == '2':
-        SIMULATION_MODE = 'SYNC'
-
+    # --- 1. GUI를 통한 모드 선택 ---
+    print("\n" + "=" * 50)
+    print("          운영체제 스케줄러 시뮬레이션")
+    print("=" * 50)
+    print("GUI 창에서 시뮬레이션 모드를 선택하세요...\n")
+    
+    user_selection = get_user_selection()
+    
+    if user_selection is None:
+        print("\n프로그램을 종료합니다.")
+        return
+    
+    SIMULATION_MODE = user_selection['mode']
+    sync_choice = user_selection['scenario']
+    num_iterations = user_selection['iterations']
+    
     master_process_list_normal = []
     master_process_list_realtime = []
-    num_iterations = 1  # 기본값: 1회 실행
     
     # --- 2. 모드에 따른 프로세스 데이터 로드 ---
-    if SIMULATION_MODE == 'PERFORMANCE':
+    if SIMULATION_MODE == 'SCHEDULING':
         print("--- 🚀 모드: 알고리즘 성능 비교 (랜덤 생성) ---")
-        
-        # 반복 실행 옵션
-        repeat_choice = ''
-        while repeat_choice not in ['1', '2']:
-            print("\n실행 모드를 선택하세요:")
-            print("  [1] 단일 실행 (1회)")
-            print("  [2] 반복 실행 (여러 워크로드로 평균 통계)")
-            repeat_choice = input("선택 (1 또는 2): ").strip()
-        
-        if repeat_choice == '2':
-            while True:
-                try:
-                    num_iterations = int(input("반복 횟수를 입력하세요 (2-100): ").strip())
-                    if 2 <= num_iterations <= 100:
-                        break
-                    else:
-                        print("2에서 100 사이의 값을 입력하세요.")
-                except ValueError:
-                    print("올바른 숫자를 입력하세요.")
-        
-        print(f"\n워크로드 생성 중... (반복: {num_iterations}회)")
+        print(f"반복 횟수: {num_iterations}회\n")
+        print(f"워크로드 생성 중... (반복: {num_iterations}회)")
         master_process_list_normal = generate_random_processes(
             num_processes=8,
             arrival_lambda=3.0,  # 평균 3ms 간격으로 도착
@@ -191,16 +172,7 @@ def run_simulations_with_visualization():
         
     elif SIMULATION_MODE == 'SYNC':
         print("--- 🔬 모드: 동기화 기능 테스트 ---")
-        
-        # --- 👇 [ 1. 하위 메뉴 추가 ] 👇 ---
-        sync_choice = ''
-        while sync_choice not in ['1', '2', '3', '4']:
-            print("\n동기화 테스트 시나리오를 선택하세요:")
-            print("  [1] 고전적 동기화 문제 (우선순위 역전)")
-            print("  [2] 교착상태 예방 (Prevention - 자원 순서 할당)")
-            print("  [3] 교착상태 회피 (Avoidance - Banker's Algorithm)")
-            print("  [4] 교착상태 탐지 및 회복 (Detection & Recovery)")
-            sync_choice = input("선택 (1/2/3/4): ").strip()
+        print(f"선택된 시나리오: {sync_choice}\n")
         
         INPUT_FILENAME = ""
         from sync import set_deadlock_strategy
@@ -218,9 +190,9 @@ def run_simulations_with_visualization():
             print(f"--- [3] 교착상태 회피 시나리오 로드 ({INPUT_FILENAME}) ---")
             set_deadlock_strategy('avoidance')
         elif sync_choice == '4':
-            INPUT_FILENAME = "deadlock_detection.txt"
-            print(f"--- [4] 교착상태 탐지 및 회복 시나리오 로드 ({INPUT_FILENAME}) ---")
-            set_deadlock_strategy('detection')
+            INPUT_FILENAME = "producer_consumer.txt"  # 세마포어 기반 생산자-소비자
+            print(f"--- [4] 세마포어 기반 생산자-소비자 시나리오 로드 ({INPUT_FILENAME}) ---")
+            set_deadlock_strategy('prevention')
         # --- 👆 [ 하위 메뉴 끝 ] 👆 ---
         
         # (모든 시나리오의 자원을 포함해야 함)
@@ -263,10 +235,10 @@ def run_simulations_with_visualization():
         print("✅ 동기화 시뮬레이션 완료! (로그 확인)")
         print("=" * 70)
 
-    elif SIMULATION_MODE == 'PERFORMANCE':
+    elif SIMULATION_MODE == 'SCHEDULING':
         
         print("=" * 70)
-        print("CPU Scheduling Simulation & Visualization (Performance Mode)")
+        print("CPU Scheduling Simulation & Visualization (Scheduling Mode)")
         print("=" * 70)
         print(f"\n반복 시뮬레이션 실행 중... (총 {num_iterations}회)\n")
         
@@ -502,6 +474,11 @@ def run_simulations_with_visualization():
                 print(f"{alg:<20} {stats['deadline_misses']:>18.0f} {stats['avg_turnaround']:>14.2f}ms {stats['context_switches']:>12.1f}")
         
         print("\n" + "=" * 70)
+
+    else:  # MEMORY 모드
+        print("--- 💾 모드: 메모리 관리 시뮬레이션 ---")
+        print("\n⚠️ 메모리 관리 시뮬레이션은 아직 구현되지 않았습니다.")
+        return
 
 # (if __name__ == "__main__": 는 수정 없음)
 
