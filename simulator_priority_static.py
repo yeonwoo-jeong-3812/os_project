@@ -235,7 +235,7 @@ class SimulatorPriorityStatic: # 👈 1. 클래스 이름 변경
                         
                         elif strategy == 'avoidance':
                             # --- 2. . ---
-                            all_procs = [proc] + [p for _, _, p in self.ready_queue] + [p for _, _, p in self.waiting_queue]
+                            all_procs = [proc] + [p for _, p in self.ready_queue] + [p for _, _, p in self.waiting_queue]
                             if self.running_process:
                                 all_procs.append(self.running_process)
                             
@@ -267,7 +267,7 @@ class SimulatorPriorityStatic: # 👈 1. 클래스 이름 변경
                                 self.running_process = None
                                 
                                 # 
-                                all_procs = [p for _, _, p in self.ready_queue] + [p for _, _, p in self.waiting_queue]
+                                all_procs = [p for _, p in self.ready_queue] + [p for _, _, p in self.waiting_queue]
                                 if self.running_process:
                                     all_procs.append(self.running_process)
                                 all_procs.append(proc)
