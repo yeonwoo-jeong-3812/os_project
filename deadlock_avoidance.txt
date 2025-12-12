@@ -1,0 +1,8 @@
+# 교착상태 회피 (Banker's Algorithm) 테스트
+# R1, R2 자원 사용
+
+# P1: R1 -> R2 (순서대로 요청)
+1,0,3,"CPU:2,LOCK:R1,CPU:2,LOCK:R2,CPU:5,UNLOCK:R2,UNLOCK:R1",0,0
+
+# P2: R2 -> R1 (역순 요청 - 회피 알고리즘이 안전 상태 검사)
+2,1,1,"CPU:2,LOCK:R2,CPU:2,LOCK:R1,CPU:5,UNLOCK:R1,UNLOCK:R2",0,0

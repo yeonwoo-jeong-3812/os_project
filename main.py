@@ -194,19 +194,33 @@ def run_simulations_with_visualization():
         
         # --- 👇 [ 1. 하위 메뉴 추가 ] 👇 ---
         sync_choice = ''
-        while sync_choice not in ['1', '2']:
+        while sync_choice not in ['1', '2', '3', '4']:
             print("\n동기화 테스트 시나리오를 선택하세요:")
             print("  [1] 고전적 동기화 문제 (우선순위 역전)")
-            print("  [2] 교착상태 예방 (자원 순서 할당)")
-            sync_choice = input("선택 (1 또는 2): ").strip()
+            print("  [2] 교착상태 예방 (Prevention - 자원 순서 할당)")
+            print("  [3] 교착상태 회피 (Avoidance - Banker's Algorithm)")
+            print("  [4] 교착상태 탐지 및 회복 (Detection & Recovery)")
+            sync_choice = input("선택 (1/2/3/4): ").strip()
         
         INPUT_FILENAME = ""
+        from sync import set_deadlock_strategy
+        
         if sync_choice == '1':
             INPUT_FILENAME = "producer_consumer.txt"
             print(f"--- [1] 우선순위 역전 시나리오 로드 ({INPUT_FILENAME}) ---")
+            set_deadlock_strategy('prevention')  # 기본 전략
         elif sync_choice == '2':
             INPUT_FILENAME = "deadlock_prevention.txt"
             print(f"--- [2] 교착상태 예방 시나리오 로드 ({INPUT_FILENAME}) ---")
+            set_deadlock_strategy('prevention')
+        elif sync_choice == '3':
+            INPUT_FILENAME = "deadlock_avoidance.txt"
+            print(f"--- [3] 교착상태 회피 시나리오 로드 ({INPUT_FILENAME}) ---")
+            set_deadlock_strategy('avoidance')
+        elif sync_choice == '4':
+            INPUT_FILENAME = "deadlock_detection.txt"
+            print(f"--- [4] 교착상태 탐지 및 회복 시나리오 로드 ({INPUT_FILENAME}) ---")
+            set_deadlock_strategy('detection')
         # --- 👆 [ 하위 메뉴 끝 ] 👆 ---
         
         # (모든 시나리오의 자원을 포함해야 함)
@@ -236,7 +250,13 @@ def run_simulations_with_visualization():
         print("✓")
         
         # (시나리오 이름에 맞게 그래프 제목 변경)
-        scenario_name = "Priority (Sync: Priority Inversion)" if sync_choice == '1' else "Priority (Sync: Deadlock Prevention)"
+        scenario_names = {
+            '1': "Priority (Sync: Priority Inversion)",
+            '2': "Priority (Deadlock Prevention)",
+            '3': "Priority (Deadlock Avoidance)",
+            '4': "Priority (Deadlock Detection & Recovery)"
+        }
+        scenario_name = scenario_names.get(sync_choice, "Priority (Sync Test)")
         visualizer.visualize_algorithm_complete(sim_prio.gantt_chart, sim_prio.completed_processes, scenario_name)
         
         print("\n" + "=" * 70)
@@ -321,8 +341,34 @@ def run_simulations_with_visualization():
                 }
         print("✓")
         
-        # 시각화를 위해 마지막 워크로드로 한 번 더 실행 (간트 차트용)
-        print("\n시각화를 위한 최종 실행...")
+        # [6단계] 대표 회차 선정 (평균 반환시간과 가장 가까운 회차)
+        print("\n대표 회차 선정 중...", end=" ")
+        representative_idx = 0
+        if num_iterations > 1:
+            # FCFS 기준으로 평균과 가장 가까운 회차 선정
+            avg_tt = averaged_comparison['FCFS']['avg_turnaround']
+            min_diff = float('inf')
+            for i, result in enumerate(all_comparison_results):
+                diff = abs(result['FCFS']['avg_turnaround'] - avg_tt)
+                if diff < min_diff:
+                    min_diff = diff
+                    representative_idx = i
+            print(f"✓ (회차 {representative_idx + 1}/{num_iterations})")
+        else:
+            print("✓")
+        
+        # 대표 회차의 워크로드로 시각화용 시뮬레이션 실행
+        print("\n시각화를 위한 대표 회차 실행...")
+        
+        # 대표 회차 워크로드 재생성 (동일한 시드 사용 불가하므로 새로 생성)
+        master_process_list_normal = generate_random_processes(
+            num_processes=8,
+            arrival_lambda=3.0,
+            max_cpu_burst=20,
+            max_io_burst=30,
+            workload_distribution={'cpu_bound': 0.3, 'io_bound': 0.4, 'mixed': 0.3}
+        )
+        master_process_list_realtime = generate_random_realtime_processes(num_processes=4, max_period=50)
         
         # 간트 차트 시각화용 시뮬레이션 (출력 억제)
         print("[1/8] FCFS...", end=" ")
@@ -330,6 +376,9 @@ def run_simulations_with_visualization():
         sim_fcfs = SimulatorFCFS(non_rt_processes)
         sim_fcfs.run()
         visualizer.visualize_algorithm_complete(sim_fcfs.gantt_chart, sim_fcfs.completed_processes, "FCFS")
+        # [5단계] 프로세스 상태 타임라인 시각화 (대표 회차만)
+        if num_iterations == 1 or representative_idx == 0:
+            visualizer.visualize_process_state_timeline(sim_fcfs.completed_processes, "FCFS")
         print("✓")
         
         print("[2/8] RR (Q=4)...", end=" ")
@@ -387,15 +436,21 @@ def run_simulations_with_visualization():
         
         # ========== Generate Comparison Charts ==========
         
-        print("\nGenerating comparison charts...", end=" ")
+        print("\n[6단계] 시각화 생성 중...")
         
-        # 평균 통계로 비교 차트 생성
+        # 1. 평균 통계 비교 차트
+        print("  - 알고리즘 성능 비교 차트...", end=" ")
         visualizer.compare_algorithms(averaged_comparison)
+        print("✓")
         
+        # 2. 실시간 스케줄링 분석
         if averaged_realtime:
+            print("  - 실시간 스케줄링 분석...", end=" ")
             visualizer.create_realtime_analysis(averaged_realtime)
+            print("✓")
         
-        # All Gantt Charts in one figure
+        # 3. 통합 간트 차트 (대표 회차)
+        print("  - 통합 간트 차트...", end=" ")
         all_gantt_charts = {
             'FCFS': sim_fcfs.gantt_chart,
             'RR(Q=4)': sim_rr.gantt_chart,
@@ -405,7 +460,19 @@ def run_simulations_with_visualization():
             'MLFQ': sim_mlfq.gantt_chart,
         }
         visualizer.visualize_all_gantt_charts(all_gantt_charts)
+        print("✓")
         
+        # 4. 문맥 교환 오버헤드 분석 그래프
+        print("  - 문맥 교환 오버헤드 분석...", end=" ")
+        overhead_data = {
+            'FCFS': {'context_switches': sim_fcfs.context_switches, 'total_overhead': sim_fcfs.total_overhead_time, 'total_time': sim_fcfs.current_time},
+            'RR(Q=4)': {'context_switches': sim_rr.context_switches, 'total_overhead': sim_rr.total_overhead_time, 'total_time': sim_rr.current_time},
+            'SJF': {'context_switches': sim_sjf.context_switches, 'total_overhead': sim_sjf.total_overhead_time, 'total_time': sim_sjf.current_time},
+            'Priority(Static)': {'context_switches': sim_prio.context_switches, 'total_overhead': sim_prio.total_overhead_time, 'total_time': sim_prio.current_time},
+            'Priority(Aging)': {'context_switches': sim_prio_dyn.context_switches, 'total_overhead': sim_prio_dyn.total_overhead_time, 'total_time': sim_prio_dyn.current_time},
+            'MLFQ': {'context_switches': sim_mlfq.context_switches, 'total_overhead': sim_mlfq.total_overhead_time, 'total_time': sim_mlfq.current_time},
+        }
+        visualizer.visualize_context_switch_overhead(overhead_data)
         print("✓")
         
         print("\n" + "=" * 70)

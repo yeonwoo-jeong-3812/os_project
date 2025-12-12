@@ -1,7 +1,7 @@
 import collections
 import heapq 
 from process import Process, parse_input_file
-from sync import get_resource
+from sync import get_resource, get_deadlock_strategy, check_safe_state, detect_deadlock
 
 class SimulatorPriorityStatic: # 👈 1. 클래스 이름 변경
     """
@@ -183,7 +183,7 @@ class SimulatorPriorityStatic: # 👈 1. 클래스 이름 변경
                     proc.state = Process.WAITING
                     io_finish_time = self.current_time + io_duration
                     heapq.heappush(self.waiting_queue, (io_finish_time, proc.pid, proc))
-                    print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid} I/O 시작 (대기 {io_duration}ms)")
+                    print(f"[Time {self.current_time:3d}]  {proc.pid} I/O ( {io_duration}ms)")
 
                     proc.advance_to_next_burst()
                     self.running_process = None
@@ -194,49 +194,132 @@ class SimulatorPriorityStatic: # 👈 1. 클래스 이름 변경
                     resource = get_resource(resource_name)
                     
                     if not resource:
-                        # ... (존재하지 않는 자원 오류 처리) ...
-                        proc.advance_to_next_burst() # (다음 단계로)
+                        proc.advance_to_next_burst()
                     else:
-                        # --- 👇 [ 1. 교착상태 예방 로직 시작 ] ---
-                        max_held_id = -1
-                        if proc.held_resources:
-                            max_held_id = max(res.id for res in proc.held_resources)
+                        strategy = get_deadlock_strategy()
                         
-                        # [규칙 위반 검사] 요청 ID가 보유한 최대 ID보다 낮은가?
-                        if resource.id < max_held_id:
-                            # --- 교착상태 예방 ---
-                            print(f"!!! [Time {self.current_time:3d}] 교착상태 예방: P{proc.pid} (보유 R_ID: {max_held_id})이(가) R_ID {resource.id}을(를) 순서 없이 요청함. 프로세스 강제 종료.")
+                        # === . ===
+                        if strategy == 'prevention':
+                            # --- 1. . ---
+                            max_held_id = -1
+                            if proc.held_resources:
+                                max_held_id = max(res.id for res in proc.held_resources)
                             
-                            # (보유한 모든 자원 즉시 반납)
-                            for res in proc.held_resources:
-                                woken_process = res.unlock(proc, self.current_time)
-                                if woken_process:
-                                    woken_process.state = Process.READY
-                                    woken_process.last_ready_time = self.current_time
-                                    woken_process.advance_to_next_burst()
-                                    heapq.heappush(self.ready_queue, (get_priority_key(woken_process), woken_process))
-                                    print(f"[Time {self.current_time:3d}] P{woken_process.pid}이(가) '{res.name}' 획득 (Ready 큐 진입)")
-                            
-                            # (프로세스 종료)
-                            proc.state = Process.TERMINATED
-                            proc.completion_time = self.current_time
-                            proc.turnaround_time = proc.completion_time - proc.arrival_time
-                            self.completed_processes.append(proc)
-                            self.running_process = None
-                        
-                        else:
-                            # --- [정상 요청] (기존 로직) ---
-                            print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid}이(가) '{resource_name}' Lock 시도...")
-                            if resource.lock(proc, self.current_time):
-                                print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid}이(가) '{resource_name}' Lock 획득")
-                                proc.held_resources.append(resource) # 👈 보유 리스트에 추가
-                                proc.advance_to_next_burst()
+                            if resource.id < max_held_id:
+                                print(f"!!! [Time {self.current_time:3d}] : P{proc.pid} (R_ID: {max_held_id}) R_ID {resource.id} . ")
+                                
+                                for res in proc.held_resources:
+                                    woken_process = res.unlock(proc, self.current_time)
+                                    if woken_process:
+                                        woken_process.state = Process.READY
+                                        woken_process.last_ready_time = self.current_time
+                                        woken_process.advance_to_next_burst()
+                                        heapq.heappush(self.ready_queue, (get_priority_key(woken_process), woken_process))
+                                        print(f"[Time {self.current_time:3d}] P{woken_process.pid} '{res.name}' (Ready ")
+                                
+                                proc.state = Process.TERMINATED
+                                proc.completion_time = self.current_time
+                                proc.turnaround_time = proc.completion_time - proc.arrival_time
+                                self.completed_processes.append(proc)
+                                self.running_process = None
                             else:
-                                print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid}이(가) '{resource_name}' Lock 실패. (자원 대기)")
+                                print(f"[Time {self.current_time:3d}]  {proc.pid} '{resource_name}' ...")
+                                if resource.lock(proc, self.current_time):
+                                    print(f"[Time {self.current_time:3d}]  {proc.pid} '{resource_name}' ")
+                                    proc.held_resources.append(resource)
+                                    proc.advance_to_next_burst()
+                                else:
+                                    print(f"[Time {self.current_time:3d}]  {proc.pid} '{resource_name}' . ( ")
+                                    proc.state = Process.WAITING
+                                    self.running_process = None
+                        
+                        elif strategy == 'avoidance':
+                            # --- 2. . ---
+                            all_procs = [proc] + [p for _, _, p in self.ready_queue] + [p for _, _, p in self.waiting_queue]
+                            if self.running_process:
+                                all_procs.append(self.running_process)
+                            
+                            if check_safe_state(proc, resource, all_procs):
+                                print(f"[Time {self.current_time:3d}]  {proc.pid} '{resource_name}' ... ( ")
+                                if resource.lock(proc, self.current_time):
+                                    print(f"[Time {self.current_time:3d}]  {proc.pid} '{resource_name}' ")
+                                    proc.held_resources.append(resource)
+                                    proc.advance_to_next_burst()
+                                else:
+                                    print(f"[Time {self.current_time:3d}]  {proc.pid} '{resource_name}' . ( ")
+                                    proc.state = Process.WAITING
+                                    self.running_process = None
+                            else:
+                                print(f"!!! [Time {self.current_time:3d}] : P{proc.pid} '{resource_name}' . ")
                                 proc.state = Process.WAITING
                                 self.running_process = None
-                            # --- 👆 [ 교착상태 예방 로직 끝 ] ---
+                        
+                        elif strategy == 'detection':
+                            # --- 3. . ---
+                            print(f"[Time {self.current_time:3d}]  {proc.pid} '{resource_name}' ...")
+                            if resource.lock(proc, self.current_time):
+                                print(f"[Time {self.current_time:3d}]  {proc.pid} '{resource_name}' ")
+                                proc.held_resources.append(resource)
+                                proc.advance_to_next_burst()
+                            else:
+                                print(f"[Time {self.current_time:3d}]  {proc.pid} '{resource_name}' . ( ")
+                                proc.state = Process.WAITING
+                                self.running_process = None
+                                
+                                # 
+                                all_procs = [p for _, _, p in self.ready_queue] + [p for _, _, p in self.waiting_queue]
+                                if self.running_process:
+                                    all_procs.append(self.running_process)
+                                all_procs.append(proc)
+                                
+                                deadlocked_pids = detect_deadlock(all_procs)
+                                if deadlocked_pids:
+                                    print(f"!!! [Time {self.current_time:3d}] : P{deadlocked_pids} ")
+                                    
+                                    # 
+                                    victim = None
+                                    max_priority = -1
+                                    for p in all_procs:
+                                        if p.pid in deadlocked_pids and p.static_priority > max_priority:
+                                            max_priority = p.static_priority
+                                            victim = p
+                                    
+                                    if victim:
+                                        print(f"!!! [Time {self.current_time:3d}] : P{victim.pid} ( : {victim.static_priority})")
+                                        
+                                        # 
+                                        for res in victim.held_resources[:]:
+                                            woken_process = res.unlock(victim, self.current_time)
+                                            if woken_process:
+                                                woken_process.state = Process.READY
+                                                woken_process.last_ready_time = self.current_time
+                                                woken_process.advance_to_next_burst()
+                                                heapq.heappush(self.ready_queue, (get_priority_key(woken_process), woken_process))
+                                                print(f"[Time {self.current_time:3d}] P{woken_process.pid} '{res.name}' (Ready ")
+                                        
+                                        # 
+                                        victim.state = Process.TERMINATED
+                                        victim.completion_time = self.current_time
+                                        victim.turnaround_time = victim.completion_time - victim.arrival_time
+                                        self.completed_processes.append(victim)
+                                        
+                                        # waiting_queue
+                                        self.waiting_queue = [(t, p, pr) for t, p, pr in self.waiting_queue if pr.pid != victim.pid]
+                                        heapq.heapify(self.waiting_queue)
+                        
+                        else:
+                            # ( )
+                            print(f"[Time {self.current_time:3d}]  {proc.pid} '{resource_name}' ...")
+                            if resource.lock(proc, self.current_time):
+                                print(f"[Time {self.current_time:3d}]  {proc.pid} '{resource_name}' ")
+                                proc.held_resources.append(resource)
+                                proc.advance_to_next_burst()
+                            else:
+                                print(f"[Time {self.current_time:3d}]  {proc.pid} '{resource_name}' . ( ")
+                                proc.state = Process.WAITING
+                                self.running_process = None
                             
+
                     if self.running_process:
                         next_burst = proc.get_current_burst()
                         if next_burst:

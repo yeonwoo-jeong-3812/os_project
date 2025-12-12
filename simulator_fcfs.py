@@ -48,15 +48,23 @@ class SimulatorFCFS:
             while self.processes_to_arrive and self.processes_to_arrive[0][0] <= self.current_time:
                 arrival, pid, proc = heapq.heappop(self.processes_to_arrive)
                 proc.state = Process.READY
-                proc.last_ready_time = self.current_time 
+                proc.last_ready_time = self.current_time
+                proc.timeline.append((self.current_time, None, Process.READY))  # Ready 상태 시작
                 self.ready_queue.append(proc) # 👈 뒤에 추가
                 print(f"[Time {self.current_time:3d}] 프로세스 {pid} 도착 (Ready 큐 진입)")
 
             # --- 2. I/O 완료 처리 ---
             while self.waiting_queue and self.waiting_queue[0][0] <= self.current_time:
                 io_finish_time, pid, proc = heapq.heappop(self.waiting_queue)
+                # Waiting 상태 종료 기록
+                if proc.timeline and proc.timeline[-1][1] is None:
+                    start_time = proc.timeline[-1][0]
+                    proc.timeline[-1] = (start_time, self.current_time, Process.WAITING)
+                    proc.io_wait_time += (self.current_time - start_time)
+                
                 proc.state = Process.READY
-                proc.last_ready_time = self.current_time 
+                proc.last_ready_time = self.current_time
+                proc.timeline.append((self.current_time, None, Process.READY))  # Ready 상태 시작
                 self.ready_queue.append(proc) # 👈 뒤에 추가
                 print(f"[Time {self.current_time:3d}] 프로세스 {pid} I/O 완료 (Ready 큐 진입)")
 
@@ -64,8 +72,16 @@ class SimulatorFCFS:
             if not self.running_process and self.overhead_remaining == 0:
                 if self.ready_queue:
                     # --- 👇 [ 3. 'popleft()'로 수정 (앞에서 꺼냄) ] ---
-                    self.running_process = self.ready_queue.popleft() 
+                    self.running_process = self.ready_queue.popleft()
+                    
+                    # Ready 상태 종료 기록
+                    if self.running_process.timeline and self.running_process.timeline[-1][1] is None:
+                        start_time = self.running_process.timeline[-1][0]
+                        self.running_process.timeline[-1] = (start_time, self.current_time, Process.READY)
+                        self.running_process.ready_wait_time += (self.current_time - start_time)
+                    
                     self.running_process.state = Process.RUNNING
+                    self.running_process.timeline.append((self.current_time, None, Process.RUNNING))  # Running 상태 시작
                     
                     # 문맥 교환 오버헤드 적용
                     if not self.cpu_was_idle:
@@ -78,7 +94,7 @@ class SimulatorFCFS:
                     wait = self.current_time - self.running_process.last_ready_time
                     self.running_process.wait_time += wait
                     
-                    print(f"[Time {self.current_time:3d}] 프로세스 {self.running_process.pid} 선택됨 (대기: {wait}ms, 총 대기: {self.running_process.wait_time}ms)")
+                    print(f"[Time {self.current_time:3d}] 프로세스 {self.running_process.pid} 선택됨 (Ready 대기: {self.running_process.ready_wait_time}ms, 총 대기: {self.running_process.wait_time}ms)")
                 
                 else:
                     self.cpu_was_idle = True # CPU 유휴
@@ -98,6 +114,11 @@ class SimulatorFCFS:
 
                 # 3-2-a. TERMINATED (모든 작업 완료)
                 if not current_burst:
+                    # Running 상태 종료 기록
+                    if proc.timeline and proc.timeline[-1][1] is None:
+                        start_time = proc.timeline[-1][0]
+                        proc.timeline[-1] = (start_time, self.current_time, Process.RUNNING)
+                    
                     proc.state = Process.TERMINATED
                     proc.completion_time = self.current_time
                     proc.turnaround_time = proc.completion_time - proc.arrival_time
@@ -128,6 +149,11 @@ class SimulatorFCFS:
                         
                         # [버그 수정] 프로세스 증발 방지
                         if not proc.get_current_burst():
+                            # Running 상태 종료 기록
+                            if proc.timeline and proc.timeline[-1][1] is None:
+                                start_time = proc.timeline[-1][0]
+                                proc.timeline[-1] = (start_time, self.current_time + 1, Process.RUNNING)
+                            
                             proc.state = Process.TERMINATED
                             proc.completion_time = self.current_time + 1
                             proc.turnaround_time = proc.completion_time - proc.arrival_time
@@ -138,8 +164,14 @@ class SimulatorFCFS:
 
                 # 3-2-c. 'IO'
                 elif current_burst[0] == 'IO':
+                    # Running 상태 종료 기록
+                    if proc.timeline and proc.timeline[-1][1] is None:
+                        start_time = proc.timeline[-1][0]
+                        proc.timeline[-1] = (start_time, self.current_time, Process.RUNNING)
+                    
                     io_duration = current_burst[1]
                     proc.state = Process.WAITING
+                    proc.timeline.append((self.current_time, None, Process.WAITING))  # Waiting 상태 시작
                     io_finish_time = self.current_time + io_duration
                     
                     heapq.heappush(self.waiting_queue, (io_finish_time, proc.pid, proc))
@@ -164,8 +196,14 @@ class SimulatorFCFS:
                             print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid}이(가) '{resource_name}' Lock 획득")
                             proc.advance_to_next_burst()
                         else:
+                            # Running 상태 종료 기록
+                            if proc.timeline and proc.timeline[-1][1] is None:
+                                start_time = proc.timeline[-1][0]
+                                proc.timeline[-1] = (start_time, self.current_time, Process.RUNNING)
+                            
                             print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid}이(가) '{resource_name}' Lock 실패. (자원 대기)")
                             proc.state = Process.WAITING
+                            proc.timeline.append((self.current_time, None, Process.WAITING))  # Waiting 상태 시작
                             self.running_process = None
                             self.cpu_was_idle = True # CPU 비었음
 
@@ -183,8 +221,15 @@ class SimulatorFCFS:
                         woken_process = resource.unlock(proc, self.current_time)
                         
                         if woken_process:
+                            # Waiting 상태 종료 기록
+                            if woken_process.timeline and woken_process.timeline[-1][1] is None:
+                                start_time = woken_process.timeline[-1][0]
+                                woken_process.timeline[-1] = (start_time, self.current_time, Process.WAITING)
+                                woken_process.io_wait_time += (self.current_time - start_time)
+                            
                             woken_process.state = Process.READY
                             woken_process.last_ready_time = self.current_time
+                            woken_process.timeline.append((self.current_time, None, Process.READY))  # Ready 상태 시작
                             self.ready_queue.append(woken_process) # 👈 뒤에 추가
                             print(f"[Time {self.current_time:3d}] 프로세스 {woken_process.pid}이(가) '{resource_name}' 획득 (Ready 큐 진입)")
 

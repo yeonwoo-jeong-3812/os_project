@@ -72,6 +72,11 @@ class Process:
         self.turnaround_time = 0
         self.last_ready_time = arrival_time
         self.completion_time = 0
+        
+        # --- 5단계: 상태별 시간 추적 ---
+        self.ready_wait_time = 0  # Ready 큐에서 대기한 시간
+        self.io_wait_time = 0     # I/O 대기 시간
+        self.timeline = []        # [(start_time, end_time, state)] 형태로 상태 변화 기록
 
     def __repr__(self):
         """

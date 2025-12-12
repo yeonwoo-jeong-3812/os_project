@@ -1,0 +1,11 @@
+# 교착상태 탐지 및 회복 테스트
+# 교착상태 발생 후 탐지하여 프로세스 종료
+
+# P1: R1 -> R2
+1,0,3,"CPU:2,LOCK:R1,CPU:2,LOCK:R2,CPU:5,UNLOCK:R2,UNLOCK:R1",0,0
+
+# P2: R2 -> R1 (교착상태 유발)
+2,1,1,"CPU:2,LOCK:R2,CPU:2,LOCK:R1,CPU:5,UNLOCK:R1,UNLOCK:R2",0,0
+
+# P3: 추가 프로세스 (교착상태 영향 없음)
+3,5,2,"CPU:3,LOCK:R1,CPU:2,UNLOCK:R1",0,0

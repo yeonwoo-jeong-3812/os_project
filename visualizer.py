@@ -793,5 +793,184 @@ class SchedulingVisualizer:
         plt.close()
 
 
+    def visualize_context_switch_overhead(self, overhead_data, save_path=None):
+        """
+        [6단계] 문맥 교환 오버헤드 분석 그래프
+        
+        Args:
+            overhead_data: {
+                'algorithm_name': {
+                    'context_switches': int,
+                    'total_overhead': int (ms),
+                    'total_time': int (ms)
+                }
+            }
+            save_path: 저장 경로
+        """
+        if not overhead_data:
+            return
+        
+        algorithms = list(overhead_data.keys())
+        context_switches = [overhead_data[alg]['context_switches'] for alg in algorithms]
+        total_overhead = [overhead_data[alg]['total_overhead'] for alg in algorithms]
+        total_time = [overhead_data[alg]['total_time'] for alg in algorithms]
+        overhead_ratio = [(overhead_data[alg]['total_overhead'] / overhead_data[alg]['total_time'] * 100) 
+                         if overhead_data[alg]['total_time'] > 0 else 0 for alg in algorithms]
+        
+        fig = plt.figure(figsize=(self.fig_width * 0.95, self.fig_height * 0.7))
+        
+        # 3개 서브플롯
+        ax1 = plt.subplot(1, 3, 1)
+        ax2 = plt.subplot(1, 3, 2)
+        ax3 = plt.subplot(1, 3, 3)
+        
+        # 1. 문맥 교환 횟수
+        bars1 = ax1.bar(algorithms, context_switches, color='#4ECDC4', edgecolor='black', width=0.6)
+        ax1.set_ylabel('횟수', fontsize=13)
+        ax1.set_title('문맥 교환 횟수', fontsize=14, fontweight='bold', pad=15)
+        ax1.grid(axis='y', alpha=0.3)
+        ax1.tick_params(axis='x', rotation=15, labelsize=10)
+        for i, v in enumerate(context_switches):
+            ax1.text(i, v + max(context_switches)*0.02, f'{v}', ha='center', fontsize=10, fontweight='bold')
+        
+        # 2. 총 오버헤드 시간
+        bars2 = ax2.bar(algorithms, total_overhead, color='#FFA07A', edgecolor='black', width=0.6)
+        ax2.set_ylabel('시간 (ms)', fontsize=13)
+        ax2.set_title('총 오버헤드 시간', fontsize=14, fontweight='bold', pad=15)
+        ax2.grid(axis='y', alpha=0.3)
+        ax2.tick_params(axis='x', rotation=15, labelsize=10)
+        for i, v in enumerate(total_overhead):
+            ax2.text(i, v + max(total_overhead)*0.02, f'{v}ms', ha='center', fontsize=10, fontweight='bold')
+        
+        # 3. 오버헤드 비율
+        colors = ['#FF6B6B' if r > 5 else '#98D8C8' for r in overhead_ratio]
+        bars3 = ax3.bar(algorithms, overhead_ratio, color=colors, edgecolor='black', width=0.6)
+        ax3.set_ylabel('비율 (%)', fontsize=13)
+        ax3.set_title('오버헤드 비율 (총 시간 대비)', fontsize=14, fontweight='bold', pad=15)
+        ax3.grid(axis='y', alpha=0.3)
+        ax3.tick_params(axis='x', rotation=15, labelsize=10)
+        ax3.axhline(y=5, color='red', linestyle='--', linewidth=1, alpha=0.5, label='5% 기준선')
+        for i, v in enumerate(overhead_ratio):
+            ax3.text(i, v + max(overhead_ratio)*0.02, f'{v:.1f}%', ha='center', fontsize=10, fontweight='bold')
+        ax3.legend(loc='upper right', fontsize=9)
+        
+        fig.suptitle('문맥 교환 오버헤드 분석', fontsize=16, fontweight='bold', y=0.96)
+        plt.subplots_adjust(left=0.06, right=0.98, top=0.88, bottom=0.12, wspace=0.25)
+        
+        if save_path:
+            plt.savefig(save_path, dpi=300, bbox_inches='tight', pad_inches=0.5)
+        else:
+            mng = plt.get_current_fig_manager()
+            try:
+                mng.window.state('zoomed')
+            except:
+                try:
+                    mng.window.showMaximized()
+                except:
+                    try:
+                        mng.frame.Maximize(True)
+                    except:
+                        pass
+            plt.show()
+        
+        plt.close()
+
+    def visualize_process_state_timeline(self, completed_processes, algorithm_name, save_path=None):
+        """
+        [5단계] 프로세스별 상태 타임라인 시각화 (Running/Ready/Waiting 구분)
+        
+        Args:
+            completed_processes: Process 객체 리스트 (timeline 속성 포함)
+            algorithm_name: 알고리즘 이름
+            save_path: 저장 경로
+        """
+        if not completed_processes:
+            return
+        
+        # timeline이 없는 프로세스 필터링
+        processes_with_timeline = [p for p in completed_processes if hasattr(p, 'timeline') and p.timeline]
+        if not processes_with_timeline:
+            return
+        
+        fig, ax = plt.subplots(figsize=(self.fig_width * 0.95, self.fig_height * 0.75))
+        
+        # 프로세스 정렬
+        processes = sorted(processes_with_timeline, key=lambda p: p.pid)
+        
+        # 상태별 색상 정의
+        state_colors = {
+            'Ready': '#FFA07A',      # 연어색 (대기)
+            'Running': '#4ECDC4',    # 청록색 (실행)
+            'Waiting': '#F7DC6F'     # 노란색 (I/O 대기)
+        }
+        
+        for i, proc in enumerate(processes):
+            y_pos = i
+            
+            # 타임라인의 각 상태 구간을 그림
+            for start_time, end_time, state in proc.timeline:
+                if end_time is None:
+                    continue  # 종료되지 않은 상태는 건너뜀
+                
+                duration = end_time - start_time
+                color = state_colors.get(state, '#CCCCCC')
+                
+                ax.barh(y_pos, duration, left=start_time, height=0.6,
+                       color=color, edgecolor='black', linewidth=0.5,
+                       label=state if i == 0 and state not in [s for _, _, s in proc.timeline[:proc.timeline.index((start_time, end_time, state))]] else '')
+            
+            # 도착 시간 표시
+            ax.plot(proc.arrival_time, y_pos, 'go', markersize=6, zorder=5)
+            
+            # 종료 시간 표시
+            if hasattr(proc, 'completion_time'):
+                ax.plot(proc.completion_time, y_pos, 'ro', markersize=6, zorder=5)
+        
+        # 축 설정
+        ax.set_xlabel('시간 (ms)', fontsize=13)
+        ax.set_ylabel('프로세스', fontsize=13)
+        ax.set_title(f'{algorithm_name} - 프로세스 상태 타임라인 (Ready/Running/Waiting)', 
+                    fontsize=15, fontweight='bold', pad=15)
+        ax.set_yticks(range(len(processes)))
+        ax.set_yticklabels([f'P{p.pid}' for p in processes], fontsize=11)
+        ax.tick_params(axis='x', labelsize=11)
+        ax.grid(axis='x', alpha=0.3, linestyle='--')
+        
+        # 범례 생성 (중복 제거)
+        handles, labels = ax.get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+        
+        # 상태별 범례 추가
+        legend_elements = [
+            mpatches.Patch(facecolor=state_colors['Running'], edgecolor='black', label='Running (실행)'),
+            mpatches.Patch(facecolor=state_colors['Ready'], edgecolor='black', label='Ready (대기)'),
+            mpatches.Patch(facecolor=state_colors['Waiting'], edgecolor='black', label='Waiting (I/O)'),
+            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='g', markersize=6, label='도착'),
+            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='r', markersize=6, label='종료')
+        ]
+        ax.legend(handles=legend_elements, loc='upper right', ncol=5, fontsize=10)
+        
+        # 레이아웃 조정
+        plt.subplots_adjust(left=0.08, right=0.96, top=0.93, bottom=0.08)
+        
+        if save_path:
+            plt.savefig(save_path, dpi=300, bbox_inches='tight', pad_inches=0.3)
+        else:
+            mng = plt.get_current_fig_manager()
+            try:
+                mng.window.state('zoomed')
+            except:
+                try:
+                    mng.window.showMaximized()
+                except:
+                    try:
+                        mng.frame.Maximize(True)
+                    except:
+                        pass
+            plt.show()
+        
+        plt.close()
+
+
 if __name__ == "__main__":
     pass
