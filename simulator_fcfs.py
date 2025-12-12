@@ -125,7 +125,8 @@ class SimulatorFCFS:
                     self.completed_processes.append(proc)
                     print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid} 종료")
                     self.running_process = None
-                    self.cpu_was_idle = True # CPU 비었음
+                    if not self.ready_queue:
+                        self.cpu_was_idle = True
 
                 # 3-2-b. 'CPU'
                 elif current_burst[0] == 'CPU':
@@ -160,7 +161,8 @@ class SimulatorFCFS:
                             self.completed_processes.append(proc)
                             print(f"[Time {self.current_time + 1:3d}] 프로세스 {proc.pid} 종료")
                             self.running_process = None
-                            self.cpu_was_idle = True
+                            if not self.ready_queue:
+                                self.cpu_was_idle = True
 
                 # 3-2-c. 'IO'
                 elif current_burst[0] == 'IO':
@@ -179,7 +181,8 @@ class SimulatorFCFS:
 
                     proc.advance_to_next_burst()
                     self.running_process = None
-                    self.cpu_was_idle = True # CPU 비었음
+                    if not self.ready_queue:
+                        self.cpu_was_idle = True
 
                 # 3-2-d. 'LOCK'
                 elif current_burst[0] == 'LOCK':
@@ -205,7 +208,8 @@ class SimulatorFCFS:
                             proc.state = Process.WAITING
                             proc.timeline.append((self.current_time, None, Process.WAITING))  # Waiting 상태 시작
                             self.running_process = None
-                            self.cpu_was_idle = True # CPU 비었음
+                            if not self.ready_queue:
+                                self.cpu_was_idle = True
 
                 # 3-2-e. 'UNLOCK'
                 elif current_burst[0] == 'UNLOCK':

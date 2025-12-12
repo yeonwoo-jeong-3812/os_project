@@ -171,7 +171,6 @@ class SimulatorMLFQ:
                         
                         proc.advance_to_next_burst()
                         
-                        # --- 👇 [버그 수정] ---
                         next_burst = proc.get_current_burst()
                         if not next_burst:
                             # [다음 작업이 없음] 종료 처리
@@ -180,11 +179,20 @@ class SimulatorMLFQ:
                             proc.turnaround_time = proc.completion_time - proc.arrival_time
                             self.completed_processes.append(proc)
                             print(f"[Time {self.current_time + 1:3d}] 프로세스 {proc.pid} 종료")
+                        else:
+                            # [다음 작업이 있음] Ready 큐로 복귀
+                            proc.state = Process.READY
+                            proc.last_ready_time = self.current_time + 1
+                            # 현재 레벨의 큐로 복귀
+                            if self.current_process_level == 1:
+                                self.ready_queue_q1.append(proc)
+                            elif self.current_process_level == 2:
+                                self.ready_queue_q2.append(proc)
+                            else:
+                                self.ready_queue_q3.append(proc)
                         
-                        # (CPU 버스트가 끝났으므로 CPU 반납)
                         self.running_process = None
                         self.current_time_slice = 0
-                        # --- 👆 [버그 수정 끝] ---
 
                     # (2) 퀀텀이 만료되었는지 (Q3-FCFS 제외)
                     elif self.current_time_slice == self.current_quantum and self.current_process_level < 3:

@@ -115,7 +115,7 @@ class SimulatorPriorityStatic: # 👈 1. 클래스 이름 변경
                     
                     self.running_process = None
             
-            # --- 3-1. CPU 작업 처리 (Dispatcher) ---
+            # --- 3-1. CPU . (Dispatcher) ---
             if not self.running_process:
                 if self.ready_queue:
                     prio_key, self.running_process = heapq.heappop(self.ready_queue)
@@ -124,17 +124,18 @@ class SimulatorPriorityStatic: # 👈 1. 클래스 이름 변경
                     
                     if not self.cpu_was_idle:
                         self.context_switches += 1
+                        self.total_overhead_time += self.context_switch_overhead
                     self.cpu_was_idle = False
                     wait = self.current_time - self.running_process.last_ready_time
                     self.running_process.wait_time += wait
                     
-                    print(f"[Time {self.current_time:3d}] 프로세스 {self.running_process.pid} 선택됨 (Prio: {prio_key[1]}, Cmd: {'0-tick' if prio_key[0]==0 else 'CPU'}, 대기: {wait}ms)")
+                    print(f"[Time {self.current_time:3d}] {self.running_process.pid} (Prio: {prio_key[1]}, Cmd: {'0-tick' if prio_key[0]==0 else 'CPU'}, : {wait}ms)")
                 
                 else:
                     self.cpu_was_idle = True
                     pass 
 
-            # --- 3-2. CPU 실행 ---
+            # --- 3-2. CPU . ---
             if self.running_process:
                 proc = self.running_process
                 current_burst = proc.get_current_burst()

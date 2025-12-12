@@ -3,23 +3,36 @@ import heapq
 from process import Process, parse_input_file
 from sync import get_resource
 
-class SimulatorRM: # 👈 1. 클래스 이름 변경
+class SimulatorRM: # 
     """
-    Rate Monotonic (RM) 시뮬레이터 (정적 우선순위 기반)
+    Rate Monotonic (RM) (정적 우선순위 기반)
     - 실시간 프로세스(P5, P6)만 스케줄링합니다.
     - 우선순위 = Period (주기)
     """
-    def __init__(self, process_list, context_switch_overhead=1):
+    def __init__(self, process_list, context_switch_overhead=1, max_simulation_time=200):
         self.processes_to_arrive = []
         
         # --- 2. 실시간 프로세스만 필터링 ---
         rt_processes = [p for p in process_list if p.period > 0]
         
+        # 원본 프로세스 정보 저장 (주기적 재생성용)
+        self.original_processes = {}
+        
         for proc in rt_processes:
             # --- 3. 우선순위를 'Period'로 설정 ---
             proc.static_priority = proc.period 
             
+            # 원본 정보 저장
+            self.original_processes[proc.pid] = {
+                'burst_pattern': proc.burst_pattern.copy(),
+                'period': proc.period,
+                'deadline': proc.deadline,
+                'static_priority': proc.static_priority
+            }
+            
             heapq.heappush(self.processes_to_arrive, (proc.arrival_time, proc.pid, proc))
+        
+        self.max_simulation_time = max_simulation_time
 
         # (우선순위 큐)
         self.ready_queue = [] 
@@ -46,7 +59,7 @@ class SimulatorRM: # 👈 1. 클래스 이름 변경
         self.deadline_misses = 0
 
     def run(self):
-        print(f"\n--- 실시간 RM 시뮬레이션 시작 ---") 
+        print(f"\n--- 실시간 RM 시작 ---") 
 
         while self.processes_to_arrive or self.ready_queue or self.waiting_queue or self.running_process:
             
@@ -57,7 +70,7 @@ class SimulatorRM: # 👈 1. 클래스 이름 변경
                 proc.state = Process.READY
                 proc.last_ready_time = self.current_time
                 
-                # 💡 5. 절대 마감시한 계산 (도착 시점에 1회)
+                # 절대 마감시한 계산 (도착 시점에 1회)
                 proc.absolute_deadline = proc.arrival_time + proc.deadline
                 
                 current_burst = proc.get_current_burst()
@@ -151,6 +164,23 @@ class SimulatorRM: # 👈 1. 클래스 이름 변경
                     
                     self.completed_processes.append(proc)
                     print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid} 종료")
+                    
+                    # 주기적 재스케줄링
+                    next_arrival = proc.arrival_time + proc.period
+                    if next_arrival < self.max_simulation_time:
+                        original = self.original_processes[proc.pid]
+                        new_proc = Process(
+                            proc.pid,
+                            next_arrival,
+                            0,
+                            ",".join(f"{cmd}:{val}" for cmd, val in original['burst_pattern']),
+                            original['period'],
+                            original['deadline']
+                        )
+                        new_proc.static_priority = original['static_priority']
+                        heapq.heappush(self.processes_to_arrive, (next_arrival, new_proc.pid, new_proc))
+                        print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid} 다음 주기 {next_arrival}에 재도착 예정")
+                    
                     self.running_process = None
 
                 # 3-2-b. 'CPU'
@@ -184,7 +214,7 @@ class SimulatorRM: # 👈 1. 클래스 이름 변경
                                 heapq.heappush(self.ready_queue, (0, proc.static_priority, proc.pid, proc))
                             self.running_process = None
                         else:
-                            # --- 👇 [버그 수정] ---
+                            # --- [버그 수정] ---
                             # [다음 작업이 없음] 종료 처리
                             proc.state = Process.TERMINATED
                             proc.completion_time = self.current_time + 1
@@ -197,8 +227,25 @@ class SimulatorRM: # 👈 1. 클래스 이름 변경
 
                             self.completed_processes.append(proc)
                             print(f"[Time {self.current_time + 1:3d}] 프로세스 {proc.pid} 종료")
+                            
+                            # 주기적 재스케줄링
+                            next_arrival = proc.arrival_time + proc.period
+                            if next_arrival < self.max_simulation_time:
+                                original = self.original_processes[proc.pid]
+                                new_proc = Process(
+                                    proc.pid,
+                                    next_arrival,
+                                    0,
+                                    ",".join(f"{cmd}:{val}" for cmd, val in original['burst_pattern']),
+                                    original['period'],
+                                    original['deadline']
+                                )
+                                new_proc.static_priority = original['static_priority']
+                                heapq.heappush(self.processes_to_arrive, (next_arrival, new_proc.pid, new_proc))
+                                print(f"[Time {self.current_time + 1:3d}] 프로세스 {proc.pid} 다음 주기 {next_arrival}에 재도착 예정")
+                            
                             self.running_process = None
-                            # --- 👆 [버그 수정 끝] ---
+                            # --- [버그 수정 끝] ---
                     
                 # 3-2-c. 'IO'
                 elif current_burst[0] == 'IO':

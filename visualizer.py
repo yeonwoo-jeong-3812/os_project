@@ -296,7 +296,7 @@ class SchedulingVisualizer:
         ax1.set_ylim([0, max(deadline_misses) * 1.3 if max(deadline_misses) > 0 else 1])
         for i, v in enumerate(deadline_misses):
             ax1.text(i, v + (max(deadline_misses)*0.05 if max(deadline_misses) > 0 else 0.1), 
-                    f'{v}', ha='center', fontsize=12, fontweight='bold')
+                    f'{int(v)}', ha='center', fontsize=12, fontweight='bold')
         
         # Average turnaround time
         ax2.bar(algorithms, avg_tt, color='#45B7D1', edgecolor='black', width=0.5)
@@ -673,6 +673,15 @@ class SchedulingVisualizer:
         한 알고리즘의 모든 시각화를 한 화면에 표시
         (간트 차트 + 타임라인 + 통계표)
         """
+        # 실시간 스케줄링인 경우 간트 차트를 100ms로 제한
+        is_realtime = algorithm_name in ['Rate Monotonic', 'EDF']
+        if is_realtime:
+            gantt_chart_display = [(pid, start, end) for pid, start, end in gantt_chart if start < 100]
+            max_time = 100
+        else:
+            gantt_chart_display = gantt_chart
+            max_time = max(end for _, _, end in gantt_chart) if gantt_chart else 0
+        
         # Create figure with 3 rows - optimized heights
         fig = plt.figure(figsize=(self.fig_width * 0.95, self.fig_height * 0.80))
         gs = fig.add_gridspec(3, 1, height_ratios=[0.5, 1, 1.1], hspace=0.35)
@@ -680,7 +689,7 @@ class SchedulingVisualizer:
         # 1. Gantt Chart (top) - much smaller
         ax1 = fig.add_subplot(gs[0])
         y_pos = 0
-        for pid, start, end in gantt_chart:
+        for pid, start, end in gantt_chart_display:
             color = self.colors.get(pid, '#CCCCCC')
             ax1.barh(y_pos, end - start, left=start, height=0.4, 
                    color=color, edgecolor='black', linewidth=0.5)
@@ -691,11 +700,14 @@ class SchedulingVisualizer:
         
         ax1.set_xlabel('시간 (ms)', fontsize=10)
         ax1.set_ylabel('CPU', fontsize=9)
-        ax1.set_title(f'{algorithm_name} 간트 차트', fontsize=11, fontweight='bold', pad=6)
+        title_suffix = ' (처음 100ms)' if is_realtime else ''
+        ax1.set_title(f'{algorithm_name} 간트 차트{title_suffix}', fontsize=11, fontweight='bold', pad=6)
         ax1.set_yticks([y_pos])
         ax1.set_yticklabels(['CPU'], fontsize=8)
         ax1.tick_params(axis='x', labelsize=8)
         ax1.grid(axis='x', alpha=0.3, linestyle='--')
+        if is_realtime:
+            ax1.set_xlim(0, max_time)
         
         legend_elements = [mpatches.Patch(facecolor=self.colors.get(i, '#CCCCCC'), 
                                          edgecolor='black', label=f'P{i}') 
@@ -704,30 +716,47 @@ class SchedulingVisualizer:
         
         # 2. Process Timeline (middle)
         ax2 = fig.add_subplot(gs[1])
-        processes = sorted(completed_processes, key=lambda p: p.pid)
         
-        for i, proc in enumerate(processes):
+        # 실시간 스케줄링인 경우 고유 PID만 표시
+        if is_realtime:
+            unique_pids = sorted(set(p.pid for p in completed_processes))
+            processes_display = [next(p for p in completed_processes if p.pid == pid) for pid in unique_pids]
+        else:
+            processes_display = sorted(completed_processes, key=lambda p: p.pid)
+        
+        for i, proc in enumerate(processes_display):
             y_pos = i
             ax2.plot(proc.arrival_time, y_pos, 'go', markersize=5, label='도착' if i == 0 else '')
             
-            proc_executions = [(start, end) for pid, start, end in gantt_chart if pid == proc.pid]
+            # 실시간인 경우 100ms 이내만 표시
+            if is_realtime:
+                proc_executions = [(start, end) for pid, start, end in gantt_chart if pid == proc.pid and start < 100]
+            else:
+                proc_executions = [(start, end) for pid, start, end in gantt_chart if pid == proc.pid]
+            
             for start, end in proc_executions:
                 ax2.barh(y_pos, end - start, left=start, height=0.25, 
                        color=self.colors.get(proc.pid, '#CCCCCC'), 
                        edgecolor='black', linewidth=0.5)
             
-            ax2.plot(proc.completion_time, y_pos, 'ro', markersize=5, label='종료' if i == 0 else '')
-            ax2.barh(y_pos, proc.turnaround_time, left=proc.arrival_time, height=0.5, 
-                   color='lightgray', alpha=0.25, edgecolor='gray', linestyle='--', linewidth=0.8)
+            if not is_realtime or proc.completion_time < 100:
+                ax2.plot(proc.completion_time, y_pos, 'ro', markersize=5, label='종료' if i == 0 else '')
+            
+            if not is_realtime:
+                ax2.barh(y_pos, proc.turnaround_time, left=proc.arrival_time, height=0.5, 
+                       color='lightgray', alpha=0.25, edgecolor='gray', linestyle='--', linewidth=0.8)
         
         ax2.set_xlabel('시간 (ms)', fontsize=10)
         ax2.set_ylabel('프로세스', fontsize=10)
-        ax2.set_title(f'{algorithm_name} 프로세스 타임라인', fontsize=11, fontweight='bold', pad=6)
-        ax2.set_yticks(range(len(processes)))
-        ax2.set_yticklabels([f'P{p.pid}' for p in processes], fontsize=8)
+        title_suffix = ' (처음 100ms)' if is_realtime else ''
+        ax2.set_title(f'{algorithm_name} 프로세스 타임라인{title_suffix}', fontsize=11, fontweight='bold', pad=6)
+        ax2.set_yticks(range(len(processes_display)))
+        ax2.set_yticklabels([f'P{p.pid}' for p in processes_display], fontsize=8)
         ax2.tick_params(axis='x', labelsize=8)
         ax2.grid(axis='x', alpha=0.3, linestyle='--')
         ax2.legend(loc='upper right', fontsize=8)
+        if is_realtime:
+            ax2.set_xlim(0, max_time)
         
         # 3. Statistics Table (bottom) - more square shape
         ax3 = fig.add_subplot(gs[2])
@@ -735,15 +764,40 @@ class SchedulingVisualizer:
         ax3.axis('off')
         
         data = []
-        for proc in sorted(completed_processes, key=lambda p: p.pid):
-            data.append([
-                f'P{proc.pid}',
-                proc.arrival_time,
-                proc.completion_time,
-                proc.turnaround_time,
-                proc.wait_time,
-                proc.static_priority
-            ])
+        
+        # 실시간 스케줄링인 경우 PID별로 집계
+        if is_realtime:
+            from collections import defaultdict
+            pid_stats = defaultdict(lambda: {'count': 0, 'tt': 0, 'wt': 0, 'first_arrival': float('inf')})
+            
+            for proc in completed_processes:
+                pid_stats[proc.pid]['count'] += 1
+                pid_stats[proc.pid]['tt'] += proc.turnaround_time
+                pid_stats[proc.pid]['wt'] += proc.wait_time
+                pid_stats[proc.pid]['first_arrival'] = min(pid_stats[proc.pid]['first_arrival'], proc.arrival_time)
+            
+            for pid in sorted(pid_stats.keys()):
+                stats = pid_stats[pid]
+                avg_tt = stats['tt'] / stats['count']
+                avg_wt = stats['wt'] / stats['count']
+                data.append([
+                    f'P{pid}',
+                    stats['first_arrival'],
+                    f"{stats['count']}회 실행",
+                    f'{avg_tt:.2f}',
+                    f'{avg_wt:.2f}',
+                    '-'
+                ])
+        else:
+            for proc in sorted(completed_processes, key=lambda p: p.pid):
+                data.append([
+                    f'P{proc.pid}',
+                    proc.arrival_time,
+                    proc.completion_time,
+                    proc.turnaround_time,
+                    proc.wait_time,
+                    proc.static_priority
+                ])
         
         avg_tt = sum(p.turnaround_time for p in completed_processes) / len(completed_processes)
         avg_wt = sum(p.wait_time for p in completed_processes) / len(completed_processes)

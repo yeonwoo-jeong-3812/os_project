@@ -128,6 +128,7 @@ class SimulatorPriorityDynamic:
                 
                 if not self.cpu_was_idle:
                     self.context_switches += 1
+                    self.total_overhead_time += self.context_switch_overhead
                 self.cpu_was_idle = False
                 wait = self.current_time - self.running_process.last_ready_time
                 self.running_process.wait_time += wait

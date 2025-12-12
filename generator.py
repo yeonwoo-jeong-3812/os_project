@@ -141,35 +141,63 @@ def save_processes_to_file(processes, filename="random_input.txt"):
 def generate_random_realtime_processes(
     num_processes=4, 
     max_arrival_time=10, 
-    max_period=50
+    target_utilization=0.85
     ):
     """
-    (새 함수) RM/EDF 테스트를 위한 랜덤 실시간 프로세스를 생성합니다.
-    - 주기(Period)와 마감시한(Deadline)을 동일하게 설정합니다.
-    - CPU 버스트는 주기보다 짧도록 보장합니다.
+    (개선된 함수) RM/EDF 테스트를 위한 랜덤 실시간 프로세스를 생성합니다.
+    - CPU 이용률을 목표치(target_utilization)에 맞춰 생성합니다.
+    - RM의 이론적 한계(약 0.69)와 1.0 사이의 이용률을 설정하면 RM은 실패하고 EDF는 성공하는 시나리오를 만들 수 있습니다.
+    - 주기를 서로 소(coprime) 관계로 설정하여 충돌을 유도합니다.
     """
     processes = []
-    print(f"--- 랜덤 실시간 프로세스 {num_processes}개 생성 시작 ---")
+    print(f"--- 랜덤 실시간 프로세스 {num_processes}개 생성 시작 (목표 이용률: {target_utilization:.2f}) ---")
+    
+    # 서로 소인 주기 후보 (충돌 유도)
+    coprime_periods = [17, 23, 29, 31, 37, 41, 43, 47]  # 소수들
+    random.shuffle(coprime_periods)
+    
+    # 각 프로세스의 이용률 (C/T)을 균등하게 분배
+    individual_utilization = target_utilization / num_processes
     
     # (PID는 일반 프로세스와 겹치지 않게 101부터 시작)
     for i in range(num_processes):
         pid = i + 101 
         arrival_time = random.randint(0, max_arrival_time)
         
-        # 주기/마감시한 (10 ~ max_period)
-        period = random.randint(10, max_period)
+        # 주기 선택 (서로 소인 값들 중에서)
+        if i < len(coprime_periods):
+            period = coprime_periods[i]
+        else:
+            # 후보가 부족하면 랜덤 소수 생성
+            period = random.choice([19, 37, 53])
+        
         deadline = period
         
-        # CPU 버스트 (주기보다 짧아야 함)
-        cpu_burst = random.randint(2, max(3, int(period / 3)))
+        # CPU 버스트 = 주기 × 개별 이용률
+        # 약간의 랜덤성 추가 (±10%)
+        cpu_burst = int(period * individual_utilization * random.uniform(0.9, 1.1))
+        cpu_burst = max(2, min(cpu_burst, period - 1))  # 최소 2, 최대 period-1
+        
         burst_pattern_str = f"CPU:{cpu_burst}"
         
         # (우선순위는 RM/EDF에서 사용 안 함, 0으로 설정)
         proc = Process(pid, arrival_time, 0, burst_pattern_str, period, deadline)
         processes.append(proc)
         
-        print(f"  P{pid} (실시간): 도착={arrival_time}, 패턴=\"{burst_pattern_str}\", 주기={period}")
+        utilization = cpu_burst / period
+        print(f"  P{pid} (실시간): 도착={arrival_time}, 패턴=\"{burst_pattern_str}\", 주기={period}, 이용률={utilization:.2f}")
 
+    # 실제 총 이용률 계산
+    total_utilization = sum(
+        sum(val for cmd, val in p.burst_pattern if cmd == 'CPU') / p.period 
+        for p in processes
+    )
+    print(f"--- 실제 총 CPU 이용률: {total_utilization:.2f} ---")
+    print(f"--- RM 이론적 한계: {num_processes * (2**(1/num_processes) - 1):.2f} ---")
+    
+    if total_utilization > num_processes * (2**(1/num_processes) - 1):
+        print("⚠️  RM 이론적 한계 초과 - RM은 실패할 가능성이 있습니다!")
+    
     print("--- 랜덤 실시간 프로세스 생성 완료 ---")
     return processes
 

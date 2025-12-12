@@ -101,7 +101,7 @@ def run_single_simulation(master_process_list_normal, master_process_list_realti
     # 7. RM (Rate Monotonic)
     if master_process_list_realtime:
         rt_processes_rm = copy.deepcopy(master_process_list_realtime)
-        sim_rm = SimulatorRM(rt_processes_rm)
+        sim_rm = SimulatorRM(rt_processes_rm, max_simulation_time=200)
         sim_rm.run()
         if sim_rm.completed_processes:
             rm_n = len(sim_rm.completed_processes)
@@ -116,7 +116,7 @@ def run_single_simulation(master_process_list_normal, master_process_list_realti
     # 8. EDF (Earliest Deadline First)
     if master_process_list_realtime:
         rt_processes_edf = copy.deepcopy(master_process_list_realtime)
-        sim_edf = SimulatorEDF(rt_processes_edf)
+        sim_edf = SimulatorEDF(rt_processes_edf, max_simulation_time=200)
         sim_edf.run()
         if sim_edf.completed_processes:
             edf_n = len(sim_edf.completed_processes)
@@ -187,7 +187,7 @@ def run_simulations_with_visualization():
             max_io_burst=30,
             workload_distribution={'cpu_bound': 0.3, 'io_bound': 0.4, 'mixed': 0.3}
         )
-        master_process_list_realtime = generate_random_realtime_processes(num_processes=4, max_period=50)
+        master_process_list_realtime = generate_random_realtime_processes(num_processes=5, target_utilization=0.98)
         
     elif SIMULATION_MODE == 'SYNC':
         print("--- 🔬 모드: 동기화 기능 테스트 ---")
@@ -299,7 +299,7 @@ def run_simulations_with_visualization():
                     max_io_burst=30,
                     workload_distribution={'cpu_bound': 0.3, 'io_bound': 0.4, 'mixed': 0.3}
                 )
-                master_process_list_realtime = generate_random_realtime_processes(num_processes=4, max_period=50)
+                master_process_list_realtime = generate_random_realtime_processes(num_processes=5, target_utilization=0.98)
             
             # 단일 시뮬레이션 실행
             comparison_results, realtime_results = run_single_simulation(
@@ -333,7 +333,7 @@ def run_simulations_with_visualization():
         if all_realtime_results and all_realtime_results[0]:
             for alg in all_realtime_results[0].keys():
                 averaged_realtime[alg] = {
-                    'deadline_misses': statistics.mean([r[alg]['deadline_misses'] for r in all_realtime_results if alg in r]),
+                    'deadline_misses': sum([r[alg]['deadline_misses'] for r in all_realtime_results if alg in r]),  # 합계로 변경
                     'avg_turnaround': statistics.mean([r[alg]['avg_turnaround'] for r in all_realtime_results if alg in r]),
                     'avg_waiting': statistics.mean([r[alg]['avg_waiting'] for r in all_realtime_results if alg in r]),
                     'cpu_utilization': statistics.mean([r[alg]['cpu_utilization'] for r in all_realtime_results if alg in r]),
@@ -368,7 +368,7 @@ def run_simulations_with_visualization():
             max_io_burst=30,
             workload_distribution={'cpu_bound': 0.3, 'io_bound': 0.4, 'mixed': 0.3}
         )
-        master_process_list_realtime = generate_random_realtime_processes(num_processes=4, max_period=50)
+        master_process_list_realtime = generate_random_realtime_processes(num_processes=5, target_utilization=0.98)
         
         # 간트 차트 시각화용 시뮬레이션 (출력 억제)
         print("[1/8] FCFS...", end=" ")
@@ -420,7 +420,7 @@ def run_simulations_with_visualization():
         
         print("[7/8] RM (Realtime)...", end=" ")
         rt_processes_rm = copy.deepcopy(master_process_list_realtime)
-        sim_rm = SimulatorRM(rt_processes_rm)
+        sim_rm = SimulatorRM(rt_processes_rm, max_simulation_time=200)
         sim_rm.run()
         if sim_rm.completed_processes:
             visualizer.visualize_algorithm_complete(sim_rm.gantt_chart, sim_rm.completed_processes, "Rate Monotonic")
@@ -428,7 +428,7 @@ def run_simulations_with_visualization():
         
         print("[8/8] EDF (Realtime)...", end=" ")
         rt_processes_edf = copy.deepcopy(master_process_list_realtime)
-        sim_edf = SimulatorEDF(rt_processes_edf)
+        sim_edf = SimulatorEDF(rt_processes_edf, max_simulation_time=200)
         sim_edf.run()
         if sim_edf.completed_processes:
             visualizer.visualize_algorithm_complete(sim_edf.gantt_chart, sim_edf.completed_processes, "EDF")
@@ -499,7 +499,7 @@ def run_simulations_with_visualization():
             print(f"{'Algorithm':<20} {'Deadline Misses':>18} {'Avg Turnaround':>15} {'Context SW':>12}")
             print("-" * 90)
             for alg, stats in averaged_realtime.items():
-                print(f"{alg:<20} {stats['deadline_misses']:>18.1f} {stats['avg_turnaround']:>14.2f}ms {stats['context_switches']:>12.1f}")
+                print(f"{alg:<20} {stats['deadline_misses']:>18.0f} {stats['avg_turnaround']:>14.2f}ms {stats['context_switches']:>12.1f}")
         
         print("\n" + "=" * 70)
 
