@@ -190,8 +190,12 @@ def run_simulations_with_visualization():
             print(f"--- [3] 교착상태 회피 시나리오 로드 ({INPUT_FILENAME}) ---")
             set_deadlock_strategy('avoidance')
         elif sync_choice == '4':
+            INPUT_FILENAME = "deadlock_recovery.txt"
+            print(f"--- [4] 교착상태 회복 시나리오 로드 ({INPUT_FILENAME}) ---")
+            set_deadlock_strategy('detection')
+        elif sync_choice == '5':
             INPUT_FILENAME = "producer_consumer.txt"  # 세마포어 기반 생산자-소비자
-            print(f"--- [4] 세마포어 기반 생산자-소비자 시나리오 로드 ({INPUT_FILENAME}) ---")
+            print(f"--- [5] 세마포어 기반 생산자-소비자 시나리오 로드 ({INPUT_FILENAME}) ---")
             set_deadlock_strategy('prevention')
         # --- 👆 [ 하위 메뉴 끝 ] 👆 ---
         
@@ -226,7 +230,8 @@ def run_simulations_with_visualization():
             '1': "Priority (Sync: Priority Inversion)",
             '2': "Priority (Deadlock Prevention)",
             '3': "Priority (Deadlock Avoidance)",
-            '4': "Priority (Deadlock Detection & Recovery)"
+            '4': "Priority (Deadlock Recovery)",
+            '5': "Priority (Producer-Consumer)"
         }
         scenario_name = scenario_names.get(sync_choice, "Priority (Sync Test)")
         visualizer.visualize_algorithm_complete(sim_prio.gantt_chart, sim_prio.completed_processes, scenario_name)
@@ -358,6 +363,8 @@ def run_simulations_with_visualization():
         sim_rr = SimulatorRR(non_rt_processes, time_quantum=4)
         sim_rr.run()
         visualizer.visualize_algorithm_complete(sim_rr.gantt_chart, sim_rr.completed_processes, "RR (Q=4)")
+        if num_iterations == 1 or representative_idx == 0:
+            visualizer.visualize_process_state_timeline(sim_rr.completed_processes, "RR (Q=4)")
         print("✓")
         
         print("[3/8] SJF (SRTF)...", end=" ")
@@ -365,6 +372,8 @@ def run_simulations_with_visualization():
         sim_sjf = SimulatorSJF(non_rt_processes)
         sim_sjf.run()
         visualizer.visualize_algorithm_complete(sim_sjf.gantt_chart, sim_sjf.completed_processes, "SJF (Preemptive)")
+        if num_iterations == 1 or representative_idx == 0:
+            visualizer.visualize_process_state_timeline(sim_sjf.completed_processes, "SJF (Preemptive)")
         print("✓")
         
         print("[4/8] Priority (Static)...", end=" ")
@@ -372,6 +381,8 @@ def run_simulations_with_visualization():
         sim_prio = SimulatorPriorityStatic(non_rt_processes)
         sim_prio.run()
         visualizer.visualize_algorithm_complete(sim_prio.gantt_chart, sim_prio.completed_processes, "Priority (Static)")
+        if num_iterations == 1 or representative_idx == 0:
+            visualizer.visualize_process_state_timeline(sim_prio.completed_processes, "Priority (Static)")
         print("✓")
         
         print("[5/8] Priority (Aging)...", end=" ")
@@ -379,6 +390,8 @@ def run_simulations_with_visualization():
         sim_prio_dyn = SimulatorPriorityDynamic(non_rt_processes, aging_factor=10)
         sim_prio_dyn.run()
         visualizer.visualize_algorithm_complete(sim_prio_dyn.gantt_chart, sim_prio_dyn.completed_processes, "Priority (Aging)")
+        if num_iterations == 1 or representative_idx == 0:
+            visualizer.visualize_process_state_timeline(sim_prio_dyn.completed_processes, "Priority (Aging)")
         print("✓")
         
         print("[6/8] MLFQ...", end=" ")
@@ -386,6 +399,8 @@ def run_simulations_with_visualization():
         sim_mlfq = SimulatorMLFQ(non_rt_processes)
         sim_mlfq.run()
         visualizer.visualize_algorithm_complete(sim_mlfq.gantt_chart, sim_mlfq.completed_processes, "MLFQ")
+        if num_iterations == 1 or representative_idx == 0:
+            visualizer.visualize_process_state_timeline(sim_mlfq.completed_processes, "MLFQ")
         print("✓")
         
         # ========== Realtime Scheduling Algorithms ==========
@@ -474,11 +489,6 @@ def run_simulations_with_visualization():
                 print(f"{alg:<20} {stats['deadline_misses']:>18.0f} {stats['avg_turnaround']:>14.2f}ms {stats['context_switches']:>12.1f}")
         
         print("\n" + "=" * 70)
-
-    else:  # MEMORY 모드
-        print("--- 💾 모드: 메모리 관리 시뮬레이션 ---")
-        print("\n⚠️ 메모리 관리 시뮬레이션은 아직 구현되지 않았습니다.")
-        return
 
 # (if __name__ == "__main__": 는 수정 없음)
 

@@ -14,8 +14,9 @@ class SimulationSelector:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("운영체제 스케줄링 시뮬레이터")
-        self.root.geometry("800x700")
-        self.root.resizable(False, False)
+        self.root.geometry("1000x900")
+        self.root.resizable(True, True)
+        self.root.state('zoomed')  # 윈도우에서 최대화
         
         # 색상 테마
         self.colors = {
@@ -144,10 +145,7 @@ class SimulationSelector:
              "#4a90e2"),
             ("SYNC", "🔒 동기화 기능 테스트", 
              "우선순위 역전, 교착상태, 세마포어 테스트",
-             "#7b68ee"),
-            ("MEMORY", "💾 메모리 관리 시뮬레이션", 
-             "페이징, 세그먼테이션, 페이지 교체 알고리즘",
-             "#50c878")
+             "#7b68ee")
         ]
         
         for i, (value, title, desc, color) in enumerate(modes):
@@ -179,7 +177,8 @@ class SimulationSelector:
             ("1", "🔄 고전적 동기화 문제 (우선순위 역전)"),
             ("2", "🚫 교착상태 예방 (Prevention - 자원 순서 할당)"),
             ("3", "🛡️ 교착상태 회피 (Avoidance - Banker's Algorithm)"),
-            ("4", "🔁 세마포어 기반 생산자-소비자 문제")
+            ("4", "🔧 교착상태 회복 (Recovery - 자원 선점 및 복구)"),
+            ("5", "🔁 세마포어 기반 생산자-소비자 문제")
         ]
         
         for i, (value, title) in enumerate(scenarios):
@@ -274,9 +273,6 @@ class SimulationSelector:
         elif mode == "SCHEDULING":
             self.scenario_frame.pack_forget()
             self.iteration_frame.pack(fill=tk.X, pady=(0, 20))
-        else:  # MEMORY
-            self.scenario_frame.pack_forget()
-            self.iteration_frame.pack_forget()
     
     def _on_start(self):
         """시작 버튼 클릭 시"""
@@ -298,12 +294,6 @@ class SimulationSelector:
                 'mode': mode,
                 'scenario': None,
                 'iterations': iterations
-            }
-        else:  # MEMORY
-            self.result = {
-                'mode': mode,
-                'scenario': None,
-                'iterations': 1
             }
         
         self.root.quit()

@@ -726,23 +726,39 @@ class SchedulingVisualizer:
         
         for i, proc in enumerate(processes_display):
             y_pos = i
-            ax2.plot(proc.arrival_time, y_pos, 'go', markersize=5, label='도착' if i == 0 else '')
             
             # 실시간인 경우 100ms 이내만 표시
             if is_realtime:
                 proc_executions = [(start, end) for pid, start, end in gantt_chart if pid == proc.pid and start < 100]
+                
+                # 실시간 프로세스: 각 주기의 도착점과 종료점 표시
+                if proc.period > 0:
+                    # completed_processes에서 해당 PID의 모든 주기 정보 가져오기
+                    pid_instances = [p for p in completed_processes if p.pid == proc.pid and p.arrival_time < 100]
+                    
+                    for idx, instance in enumerate(pid_instances):
+                        # 도착점 (초록색)
+                        ax2.plot(instance.arrival_time, y_pos, 'go', markersize=6, 
+                               label='도착' if i == 0 and idx == 0 else '')
+                        
+                        # 종료점 (빨간색) - 100ms 이내인 경우만
+                        if instance.completion_time <= 100:
+                            ax2.plot(instance.completion_time, y_pos, 'ro', markersize=6, 
+                                   label='종료' if i == 0 and idx == 0 else '')
+                else:
+                    # 비실시간 프로세스
+                    ax2.plot(proc.arrival_time, y_pos, 'go', markersize=6, label='도착' if i == 0 else '')
             else:
                 proc_executions = [(start, end) for pid, start, end in gantt_chart if pid == proc.pid]
+                ax2.plot(proc.arrival_time, y_pos, 'go', markersize=6, label='도착' if i == 0 else '')
             
             for start, end in proc_executions:
                 ax2.barh(y_pos, end - start, left=start, height=0.25, 
                        color=self.colors.get(proc.pid, '#CCCCCC'), 
                        edgecolor='black', linewidth=0.5)
             
-            if not is_realtime or proc.completion_time < 100:
-                ax2.plot(proc.completion_time, y_pos, 'ro', markersize=5, label='종료' if i == 0 else '')
-            
             if not is_realtime:
+                ax2.plot(proc.completion_time, y_pos, 'ro', markersize=6, label='종료' if i == 0 else '')
                 ax2.barh(y_pos, proc.turnaround_time, left=proc.arrival_time, height=0.5, 
                        color='lightgray', alpha=0.25, edgecolor='gray', linestyle='--', linewidth=0.8)
         
