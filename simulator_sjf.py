@@ -47,6 +47,7 @@ class SimulatorSJF: #  클래스 이름 변경 (SRTF)
                 arrival, pid, proc = heapq.heappop(self.processes_to_arrive)
                 proc.state = Process.READY
                 proc.last_ready_time = self.current_time
+                proc.timeline.append((self.current_time, None, Process.READY))
                 
                 current_burst = proc.get_current_burst()
                 if current_burst and current_burst[0] == 'CPU':
@@ -59,8 +60,12 @@ class SimulatorSJF: #  클래스 이름 변경 (SRTF)
             # --- 2. I/O 완료 처리 ---
             while self.waiting_queue and self.waiting_queue[0][0] <= self.current_time:
                 io_finish_time, pid, proc = heapq.heappop(self.waiting_queue)
+                if proc.timeline and proc.timeline[-1][1] is None:
+                    start_time = proc.timeline[-1][0]
+                    proc.timeline[-1] = (start_time, self.current_time, Process.WAITING)
                 proc.state = Process.READY
                 proc.last_ready_time = self.current_time
+                proc.timeline.append((self.current_time, None, Process.READY))
                 
                 current_burst = proc.get_current_burst()
                 if current_burst and current_burst[0] == 'CPU':
@@ -81,14 +86,19 @@ class SimulatorSJF: #  클래스 이름 변경 (SRTF)
                 if shortest_remaining_time < self.running_process.remaining_cpu_time:
                     print(f"[Time {self.current_time:3d}] 프로세스 {self.running_process.pid} 선점됨 (새 작업 P{shortest_pid}이 더 짧음)")
                     
-                    if self.gantt_chart and self.gantt_chart[-1][0] == self.running_process.pid and len(self.gantt_chart[-1]) == 2:
+                    # 간트 차트 종료 처리
+                    if self.gantt_chart and len(self.gantt_chart[-1]) == 2:
                         start_time = self.gantt_chart[-1][1]
-                        self.gantt_chart[-1] = (self.running_process.pid, start_time, self.current_time)
+                        self.gantt_chart[-1] = (self.gantt_chart[-1][0], start_time, self.current_time)
                         self.last_cpu_busy_time = self.current_time
 
+                    if self.running_process.timeline and self.running_process.timeline[-1][1] is None:
+                        start_time = self.running_process.timeline[-1][0]
+                        self.running_process.timeline[-1] = (start_time, self.current_time, Process.RUNNING)
                     proc = self.running_process
                     proc.state = Process.READY
                     proc.last_ready_time = self.current_time
+                    proc.timeline.append((self.current_time, None, Process.READY))
                     heapq.heappush(self.ready_queue, (proc.remaining_cpu_time, proc.pid, proc))
                     
                     self.running_process = None
@@ -98,7 +108,11 @@ class SimulatorSJF: #  클래스 이름 변경 (SRTF)
                 if self.ready_queue:
                     remaining_time, pid, self.running_process = heapq.heappop(self.ready_queue)
                     
+                    if self.running_process.timeline and self.running_process.timeline[-1][1] is None:
+                        start_time = self.running_process.timeline[-1][0]
+                        self.running_process.timeline[-1] = (start_time, self.current_time, Process.READY)
                     self.running_process.state = Process.RUNNING
+                    self.running_process.timeline.append((self.current_time, None, Process.RUNNING))
                     
                     # 문맥 교환 오버헤드 적용
                     if not self.cpu_was_idle:
@@ -130,6 +144,9 @@ class SimulatorSJF: #  클래스 이름 변경 (SRTF)
 
                 # 3-2-a. TERMINATED
                 if not current_burst:
+                    if proc.timeline and proc.timeline[-1][1] is None:
+                        start_time = proc.timeline[-1][0]
+                        proc.timeline[-1] = (start_time, self.current_time, Process.RUNNING)
                     proc.state = Process.TERMINATED
                     proc.completion_time = self.current_time
                     proc.turnaround_time = proc.completion_time - proc.arrival_time
@@ -160,8 +177,12 @@ class SimulatorSJF: #  클래스 이름 변경 (SRTF)
                         next_burst = proc.get_current_burst()
                         if next_burst:
                             # [다음 작업이 있음] Ready 큐로 복귀
+                            if proc.timeline and proc.timeline[-1][1] is None:
+                                tl_start = proc.timeline[-1][0]
+                                proc.timeline[-1] = (tl_start, self.current_time + 1, Process.RUNNING)
                             proc.state = Process.READY
                             proc.last_ready_time = self.current_time + 1
+                            proc.timeline.append((self.current_time + 1, None, Process.READY))
                             if next_burst[0] == 'CPU':
                                 heapq.heappush(self.ready_queue, (proc.remaining_cpu_time, proc.pid, proc))
                             else: # LOCK, UNLOCK
@@ -170,6 +191,9 @@ class SimulatorSJF: #  클래스 이름 변경 (SRTF)
                         else:
                             # --- 👇 [버그 수정] ---
                             # [다음 작업이 없음] 종료 처리
+                            if proc.timeline and proc.timeline[-1][1] is None:
+                                tl_start = proc.timeline[-1][0]
+                                proc.timeline[-1] = (tl_start, self.current_time + 1, Process.RUNNING)
                             proc.state = Process.TERMINATED
                             proc.completion_time = self.current_time + 1
                             proc.turnaround_time = proc.completion_time - proc.arrival_time
@@ -180,8 +204,12 @@ class SimulatorSJF: #  클래스 이름 변경 (SRTF)
                     
                 # 3-2-c. 'IO'
                 elif current_burst[0] == 'IO':
+                    if proc.timeline and proc.timeline[-1][1] is None:
+                        start_time = proc.timeline[-1][0]
+                        proc.timeline[-1] = (start_time, self.current_time, Process.RUNNING)
                     io_duration = current_burst[1]
                     proc.state = Process.WAITING
+                    proc.timeline.append((self.current_time, None, Process.WAITING))
                     io_finish_time = self.current_time + io_duration
                     heapq.heappush(self.waiting_queue, (io_finish_time, proc.pid, proc))
                     print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid} I/O 시작 (대기 {io_duration}ms)")
@@ -203,8 +231,12 @@ class SimulatorSJF: #  클래스 이름 변경 (SRTF)
                             print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid}이(가) '{resource_name}' Lock 획득")
                             proc.advance_to_next_burst()
                         else:
+                            if proc.timeline and proc.timeline[-1][1] is None:
+                                start_time = proc.timeline[-1][0]
+                                proc.timeline[-1] = (start_time, self.current_time, Process.RUNNING)
                             print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid}이(가) '{resource_name}' Lock 실패. (자원 대기)")
                             proc.state = Process.WAITING
+                            proc.timeline.append((self.current_time, None, Process.WAITING))
                             self.running_process = None
                             
                     if self.running_process: 
@@ -231,8 +263,12 @@ class SimulatorSJF: #  클래스 이름 변경 (SRTF)
                         woken_process = resource.unlock(proc, self.current_time)
                         
                         if woken_process:
+                            if woken_process.timeline and woken_process.timeline[-1][1] is None:
+                                start_time = woken_process.timeline[-1][0]
+                                woken_process.timeline[-1] = (start_time, self.current_time, Process.WAITING)
                             woken_process.state = Process.READY
                             woken_process.last_ready_time = self.current_time
+                            woken_process.timeline.append((self.current_time, None, Process.READY))
                             
                             woken_burst = woken_process.get_current_burst()
                             if woken_burst and woken_burst[0] == 'CPU':
@@ -263,6 +299,13 @@ class SimulatorSJF: #  클래스 이름 변경 (SRTF)
         
         # --- 시뮬레이션 종료 처리 ---
         total_simulation_time = self.current_time
+        
+        # 모든 프로세스의 미완료 타임라인 종료 처리
+        for proc in self.completed_processes:
+            if proc.timeline and proc.timeline[-1][1] is None:
+                start_time = proc.timeline[-1][0]
+                state = proc.timeline[-1][2]
+                proc.timeline[-1] = (start_time, self.current_time, state)
         
         total_cpu_busy_time = 0
         idle_time_start = 0

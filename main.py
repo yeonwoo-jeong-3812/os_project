@@ -457,11 +457,13 @@ def run_simulations_with_visualization():
             'Priority(Static)': sim_prio.gantt_chart,
             'Priority(Aging)': sim_prio_dyn.gantt_chart,
             'MLFQ': sim_mlfq.gantt_chart,
+            'RM': sim_rm.gantt_chart,
+            'EDF': sim_edf.gantt_chart,
         }
         visualizer.visualize_all_gantt_charts(all_gantt_charts)
         print("✓")
         
-        # 4. 문맥 교환 오버헤드 분석 그래프
+        # 4. 문맥 교환 오버헤드 분석 그래프 (RM, EDF 포함)
         print("  - 문맥 교환 오버헤드 분석...", end=" ")
         overhead_data = {
             'FCFS': {'context_switches': sim_fcfs.context_switches, 'total_overhead': sim_fcfs.total_overhead_time, 'total_time': sim_fcfs.current_time},
@@ -470,6 +472,8 @@ def run_simulations_with_visualization():
             'Priority(Static)': {'context_switches': sim_prio.context_switches, 'total_overhead': sim_prio.total_overhead_time, 'total_time': sim_prio.current_time},
             'Priority(Aging)': {'context_switches': sim_prio_dyn.context_switches, 'total_overhead': sim_prio_dyn.total_overhead_time, 'total_time': sim_prio_dyn.current_time},
             'MLFQ': {'context_switches': sim_mlfq.context_switches, 'total_overhead': sim_mlfq.total_overhead_time, 'total_time': sim_mlfq.current_time},
+            'RM': {'context_switches': sim_rm.context_switches, 'total_overhead': sim_rm.total_overhead_time, 'total_time': sim_rm.current_time},
+            'EDF': {'context_switches': sim_edf.context_switches, 'total_overhead': sim_edf.total_overhead_time, 'total_time': sim_edf.current_time},
         }
         visualizer.visualize_context_switch_overhead(overhead_data)
         print("✓")

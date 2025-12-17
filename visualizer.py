@@ -983,6 +983,9 @@ class SchedulingVisualizer:
                     continue  # 종료되지 않은 상태는 건너뜀
                 
                 duration = end_time - start_time
+                if duration <= 0:
+                    continue  # duration이 0 이하인 항목은 건너뜀
+                
                 color = state_colors.get(state, '#CCCCCC')
                 
                 ax.barh(y_pos, duration, left=start_time, height=0.6,

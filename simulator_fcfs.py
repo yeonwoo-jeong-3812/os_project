@@ -247,8 +247,15 @@ class SimulatorFCFS:
             # --- 5. 시간 증가 ---
             self.current_time += 1
         
-        # --- 시뮬레이션 종료 처리 --- (이하 동일)
+        # --- 시뮬레이션 종료 처리 --- 
         total_simulation_time = self.current_time
+        
+        # 모든 프로세스의 미완료 타임라인 종료 처리
+        for proc in self.completed_processes:
+            if proc.timeline and proc.timeline[-1][1] is None:
+                start_time = proc.timeline[-1][0]
+                state = proc.timeline[-1][2]
+                proc.timeline[-1] = (start_time, self.current_time, state)
         
         total_cpu_busy_time = 0
         idle_time_start = 0

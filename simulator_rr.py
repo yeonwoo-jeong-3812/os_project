@@ -48,22 +48,31 @@ class SimulatorRR: #
                 arrival, pid, proc = heapq.heappop(self.processes_to_arrive)
                 proc.state = Process.READY
                 proc.last_ready_time = self.current_time
+                proc.timeline.append((self.current_time, None, Process.READY))
                 self.ready_queue.append(proc) 
                 print(f"[Time {self.current_time:3d}] 프로세스 {pid} 도착 (Ready 큐 진입)")
 
             # --- 2. I/O 완료 처리 ---
             while self.waiting_queue and self.waiting_queue[0][0] <= self.current_time:
                 io_finish_time, pid, proc = heapq.heappop(self.waiting_queue)
+                if proc.timeline and proc.timeline[-1][1] is None:
+                    start_time = proc.timeline[-1][0]
+                    proc.timeline[-1] = (start_time, self.current_time, Process.WAITING)
                 proc.state = Process.READY
                 proc.last_ready_time = self.current_time
+                proc.timeline.append((self.current_time, None, Process.READY))
                 self.ready_queue.append(proc) 
                 print(f"[Time {self.current_time:3d}] 프로세스 {pid} I/O 완료 (Ready 큐 진입)")
 
             # --- 3. CPU 작업 처리 (Dispatcher) ---
             if not self.running_process and self.overhead_remaining == 0:
                 if self.ready_queue:
-                    self.running_process = self.ready_queue.popleft() 
+                    self.running_process = self.ready_queue.popleft()
+                    if self.running_process.timeline and self.running_process.timeline[-1][1] is None:
+                        start_time = self.running_process.timeline[-1][0]
+                        self.running_process.timeline[-1] = (start_time, self.current_time, Process.READY)
                     self.running_process.state = Process.RUNNING
+                    self.running_process.timeline.append((self.current_time, None, Process.RUNNING))
                     
                     # 문맥 교환 오버헤드 적용
                     if not self.cpu_was_idle:
@@ -97,6 +106,9 @@ class SimulatorRR: #
 
                 # 3-2-a. TERMINATED
                 if not current_burst:
+                    if proc.timeline and proc.timeline[-1][1] is None:
+                        start_time = proc.timeline[-1][0]
+                        proc.timeline[-1] = (start_time, self.current_time, Process.RUNNING)
                     proc.state = Process.TERMINATED
                     proc.completion_time = self.current_time
                     proc.turnaround_time = proc.completion_time - proc.arrival_time
@@ -134,16 +146,24 @@ class SimulatorRR: #
                         self.gantt_chart[-1] = (proc.pid, start_time, self.current_time + 1)
                         self.last_cpu_busy_time = self.current_time + 1
                         
+                        if proc.timeline and proc.timeline[-1][1] is None:
+                            tl_start = proc.timeline[-1][0]
+                            proc.timeline[-1] = (tl_start, self.current_time + 1, Process.RUNNING)
                         proc.state = Process.READY
-                        proc.last_ready_time = self.current_time + 1 
+                        proc.last_ready_time = self.current_time + 1
+                        proc.timeline.append((self.current_time + 1, None, Process.READY))
                         self.ready_queue.append(proc)
                         
                         self.running_process = None # CPU 반납
 
                 # 3-2-c. 'IO'
                 elif current_burst[0] == 'IO':
+                    if proc.timeline and proc.timeline[-1][1] is None:
+                        start_time = proc.timeline[-1][0]
+                        proc.timeline[-1] = (start_time, self.current_time, Process.RUNNING)
                     io_duration = current_burst[1]
                     proc.state = Process.WAITING
+                    proc.timeline.append((self.current_time, None, Process.WAITING))
                     io_finish_time = self.current_time + io_duration # (버그 수정)
                     
                     heapq.heappush(self.waiting_queue, (io_finish_time, proc.pid, proc))
@@ -166,8 +186,12 @@ class SimulatorRR: #
                             print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid}이(가) '{resource_name}' Lock 획득")
                             proc.advance_to_next_burst()
                         else:
+                            if proc.timeline and proc.timeline[-1][1] is None:
+                                start_time = proc.timeline[-1][0]
+                                proc.timeline[-1] = (start_time, self.current_time, Process.RUNNING)
                             print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid}이(가) '{resource_name}' Lock 실패. (자원 대기)")
                             proc.state = Process.WAITING
+                            proc.timeline.append((self.current_time, None, Process.WAITING))
                             self.running_process = None # CPU 반납
 
                 # 3-2-e. 'UNLOCK'
@@ -184,8 +208,12 @@ class SimulatorRR: #
                         woken_process = resource.unlock(proc, self.current_time)
                         
                         if woken_process:
+                            if woken_process.timeline and woken_process.timeline[-1][1] is None:
+                                start_time = woken_process.timeline[-1][0]
+                                woken_process.timeline[-1] = (start_time, self.current_time, Process.WAITING)
                             woken_process.state = Process.READY
                             woken_process.last_ready_time = self.current_time
+                            woken_process.timeline.append((self.current_time, None, Process.READY))
                             self.ready_queue.append(woken_process)
                             print(f"[Time {self.current_time:3d}] 프로세스 {woken_process.pid}이(가) '{resource_name}' 획득 (Ready 큐 진입)")
 
@@ -201,6 +229,13 @@ class SimulatorRR: #
         
         # --- 시뮬레이션 종료 처리 ---
         total_simulation_time = self.current_time
+        
+        # 모든 프로세스의 미완료 타임라인 종료 처리
+        for proc in self.completed_processes:
+            if proc.timeline and proc.timeline[-1][1] is None:
+                start_time = proc.timeline[-1][0]
+                state = proc.timeline[-1][2]
+                proc.timeline[-1] = (start_time, self.current_time, state)
         
         total_cpu_busy_time = 0
         idle_time_start = 0

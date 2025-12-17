@@ -69,6 +69,7 @@ class SimulatorRM: #
                 arrival, pid, proc = heapq.heappop(self.processes_to_arrive)
                 proc.state = Process.READY
                 proc.last_ready_time = self.current_time
+                proc.timeline.append((self.current_time, None, Process.READY))
                 
                 # 절대 마감시한 계산 (도착 시점에 1회)
                 proc.absolute_deadline = proc.arrival_time + proc.deadline
@@ -88,8 +89,12 @@ class SimulatorRM: #
             # [ 2. 수정된 부분 (우선순위 튜플 사용) ]
             while self.waiting_queue and self.waiting_queue[0][0] <= self.current_time:
                 io_finish_time, pid, proc = heapq.heappop(self.waiting_queue)
+                if proc.timeline and proc.timeline[-1][1] is None:
+                    start_time = proc.timeline[-1][0]
+                    proc.timeline[-1] = (start_time, self.current_time, Process.WAITING)
                 proc.state = Process.READY
                 proc.last_ready_time = self.current_time
+                proc.timeline.append((self.current_time, None, Process.READY))
                 
                 current_burst = proc.get_current_burst()
                 if current_burst and current_burst[0] == 'CPU':
@@ -117,19 +122,26 @@ class SimulatorRM: #
                         self.gantt_chart[-1] = (self.running_process.pid, self.gantt_chart[-1][1], self.current_time)
                         self.last_cpu_busy_time = self.current_time
 
+                    if self.running_process.timeline and self.running_process.timeline[-1][1] is None:
+                        start_time = self.running_process.timeline[-1][0]
+                        self.running_process.timeline[-1] = (start_time, self.current_time, Process.RUNNING)
                     proc = self.running_process
                     proc.state = Process.READY
                     proc.last_ready_time = self.current_time
+                    proc.timeline.append((self.current_time, None, Process.READY))
                     heapq.heappush(self.ready_queue, (1, proc.static_priority, proc.pid, proc))
                     
                     self.running_process = None
             
             # --- 3-1. CPU 작업 처리 (Dispatcher) ---
-            if not self.running_process:
+            if not self.running_process and self.overhead_remaining == 0:
                 if self.ready_queue:
-                    cmd_prio, priority, pid, self.running_process = heapq.heappop(self.ready_queue)
-                    
+                    cmd_prio, period, pid, self.running_process = heapq.heappop(self.ready_queue)
+                    if self.running_process.timeline and self.running_process.timeline[-1][1] is None:
+                        start_time = self.running_process.timeline[-1][0]
+                        self.running_process.timeline[-1] = (start_time, self.current_time, Process.READY)
                     self.running_process.state = Process.RUNNING
+                    self.running_process.timeline.append((self.current_time, None, Process.RUNNING))
                     
                     if not self.cpu_was_idle:
                         self.context_switches += 1
@@ -139,7 +151,7 @@ class SimulatorRM: #
                     
                     # (기존 RM 코드에서 마감시한 계산 부분을 도착 시점으로 이동시킴)
                     
-                    print(f"[Time {self.current_time:3d}] 프로세스 {self.running_process.pid} 선택됨 (주기: {priority}, 마감: {self.running_process.absolute_deadline}, 대기: {wait}ms)")
+                    print(f"[Time {self.current_time:3d}] 프로세스 {self.running_process.pid} 선택됨 (주기: {period}, 마감: {self.running_process.absolute_deadline}, 대기: {wait}ms)")
                 
                 else:
                     self.cpu_was_idle = True
@@ -153,6 +165,9 @@ class SimulatorRM: #
 
                 # 3-2-a. TERMINATED
                 if not current_burst:
+                    if proc.timeline and proc.timeline[-1][1] is None:
+                        start_time = proc.timeline[-1][0]
+                        proc.timeline[-1] = (start_time, self.current_time, Process.RUNNING)
                     proc.state = Process.TERMINATED
                     proc.completion_time = self.current_time
                     proc.turnaround_time = proc.completion_time - proc.arrival_time
@@ -206,8 +221,12 @@ class SimulatorRM: #
                         next_burst = proc.get_current_burst()
                         if next_burst:
                             # [다음 작업이 있음] Ready 큐로 복귀
+                            if proc.timeline and proc.timeline[-1][1] is None:
+                                tl_start = proc.timeline[-1][0]
+                                proc.timeline[-1] = (tl_start, self.current_time + 1, Process.RUNNING)
                             proc.state = Process.READY
                             proc.last_ready_time = self.current_time + 1
+                            proc.timeline.append((self.current_time + 1, None, Process.READY))
                             if next_burst[0] == 'CPU':
                                 heapq.heappush(self.ready_queue, (1, proc.static_priority, proc.pid, proc))
                             else: # LOCK, UNLOCK
@@ -216,6 +235,9 @@ class SimulatorRM: #
                         else:
                             # --- [버그 수정] ---
                             # [다음 작업이 없음] 종료 처리
+                            if proc.timeline and proc.timeline[-1][1] is None:
+                                tl_start = proc.timeline[-1][0]
+                                proc.timeline[-1] = (tl_start, self.current_time + 1, Process.RUNNING)
                             proc.state = Process.TERMINATED
                             proc.completion_time = self.current_time + 1
                             proc.turnaround_time = proc.completion_time - proc.arrival_time
@@ -249,8 +271,12 @@ class SimulatorRM: #
                     
                 # 3-2-c. 'IO'
                 elif current_burst[0] == 'IO':
+                    if proc.timeline and proc.timeline[-1][1] is None:
+                        start_time = proc.timeline[-1][0]
+                        proc.timeline[-1] = (start_time, self.current_time, Process.RUNNING)
                     io_duration = current_burst[1]
                     proc.state = Process.WAITING
+                    proc.timeline.append((self.current_time, None, Process.WAITING))
                     io_finish_time = self.current_time + io_duration
                     heapq.heappush(self.waiting_queue, (io_finish_time, proc.pid, proc))
                     print(f"[Time {self.current_time:3d}] 프로세스 {proc.pid} I/O 시작 (대기 {io_duration}ms)")
@@ -279,8 +305,12 @@ class SimulatorRM: #
                     if self.running_process: 
                         next_burst = proc.get_current_burst()
                         if next_burst:
+                            if proc.timeline and proc.timeline[-1][1] is None:
+                                tl_start = proc.timeline[-1][0]
+                                proc.timeline[-1] = (tl_start, self.current_time + 1, Process.RUNNING)
                             proc.state = Process.READY
-                            proc.last_ready_time = self.current_time
+                            proc.last_ready_time = self.current_time + 1
+                            proc.timeline.append((self.current_time + 1, None, Process.READY))
                             if next_burst[0] == 'CPU':
                                 heapq.heappush(self.ready_queue, (1, proc.static_priority, proc.pid, proc))
                             else:
@@ -332,6 +362,14 @@ class SimulatorRM: #
         # --- 시뮬레이션 종료 처리 ---
         # (이하 print_results는 정적 우선순위와 거의 동일)
         total_simulation_time = self.current_time
+        
+        # 모든 프로세스의 미완료 타임라인 종료 처리
+        for proc in self.completed_processes:
+            if proc.timeline and proc.timeline[-1][1] is None:
+                start_time = proc.timeline[-1][0]
+                state = proc.timeline[-1][2]
+                proc.timeline[-1] = (start_time, self.current_time, state)
+        
         total_cpu_busy_time = 0
         idle_time_start = 0
         self.gantt_chart = [entry for entry in self.gantt_chart if len(entry) == 3] 
@@ -339,7 +377,6 @@ class SimulatorRM: #
             idle_duration = start - idle_time_start
             if idle_duration > 0: self.total_cpu_idle_time += idle_duration
             total_cpu_busy_time += (end - start)
-            idle_time_start = end
         if total_simulation_time > idle_time_start:
              self.total_cpu_idle_time += (total_simulation_time - idle_time_start)
 
