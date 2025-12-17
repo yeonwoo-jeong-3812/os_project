@@ -425,9 +425,21 @@ def run_simulations_with_visualization():
         
         print("\n[6단계] 시각화 생성 중...")
         
-        # 1. 평균 통계 비교 차트
+        # 1. 평균 통계 비교 차트 (RM, EDF 포함)
         print("  - 알고리즘 성능 비교 차트...", end=" ")
-        visualizer.compare_algorithms(averaged_comparison)
+        # RM과 EDF를 averaged_comparison에 추가
+        combined_comparison = averaged_comparison.copy()
+        if averaged_realtime:
+            for alg_name, stats in averaged_realtime.items():
+                combined_comparison[alg_name] = {
+                    'avg_turnaround': stats['avg_turnaround'],
+                    'avg_waiting': stats['avg_waiting'],
+                    'cpu_utilization': stats['cpu_utilization'],
+                    'context_switches': stats['context_switches'],
+                    'std_turnaround': 0,
+                    'std_waiting': 0,
+                }
+        visualizer.compare_algorithms(combined_comparison)
         print("✓")
         
         # 2. 실시간 스케줄링 분석
